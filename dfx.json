@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "dfx": "0.15.4",
+  "canisters": {
+    "relayer": {
+      "type": "rust",
+      "package": "relayer",
+      "candid": "canisters/relayer/relayer.did",
+      "wasm": "target/wasm32-unknown-unknown/release/relayer.wasm",
+      "build": [
+        "cargo",
+        "build",
+        "--target",
+        "wasm32-unknown-unknown",
+        "--release",
+        "--package",
+        "relayer"
+      ]
+    }
+  },
+  "defaults": {
+    "build": {
+      "packtool": ""
+    }
+  },
+  "networks": {
+    "local": {
+      "bind": "127.0.0.1:4943",
+      "type": "ephemeral"
+    }
+  },
+  "output_env_file": ".dfx/local/canister_ids.json"
+}
