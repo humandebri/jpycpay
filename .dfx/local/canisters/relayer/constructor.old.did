@@ -1,0 +1,48 @@
+type AssetStatus = variant { Active; Deprecated; Disabled };
+
+type SubmitAuthorizationRequest = record {
+  asset: principal;
+  from: blob;
+  to: blob;
+  value: nat;
+  valid_after: nat;
+  valid_before: nat;
+  nonce: blob;
+  sig_v: nat8;
+  sig_r: blob;
+  sig_s: blob;
+};
+
+type SubmitAuthorizationResponse = variant { ok: text; err: text };
+
+type InfoResponse = record {
+  relayer_addr: text;
+  gas_wei: nat;
+  threshold_wei: nat;
+};
+
+type LogEntry = record {
+  id: nat64;
+  ts: nat64;
+  from: text;
+  to: text;
+  value: nat;
+  tx: opt text;
+  status: text;
+  fail_reason: opt text;
+};
+
+service : {
+  submit_authorization: (SubmitAuthorizationRequest) -> (SubmitAuthorizationResponse);
+  info: () -> (InfoResponse) query;
+  logs: (opt nat64, nat32) -> (vec LogEntry) query;
+  set_rpc_target: (principal, text) -> ();
+  set_threshold: (nat) -> ();
+  set_chain_id: (nat) -> ();
+  set_ecdsa_derivation_path: (vec blob) -> ();
+  set_relayer_address: (text) -> ();
+  add_asset: (principal, text, nat) -> ();
+  deprecate_asset: (principal) -> ();
+  disable_asset: (principal) -> ();
+  pause: (bool) -> ();
+}

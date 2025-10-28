@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "dfx": "0.15.4",
+  "dfx": "0.24.3",
   "canisters": {
     "relayer": {
       "type": "rust",
@@ -16,6 +16,10 @@
         "--package",
         "relayer"
       ]
+    },
+    "jpyc_wrapper": {
+      "type": "motoko",
+      "main": "canisters/jpyc_wrapper/main.mo"
     }
   },
   "defaults": {
@@ -28,6 +32,5 @@
       "bind": "127.0.0.1:4943",
       "type": "ephemeral"
     }
-  },
-  "output_env_file": ".dfx/local/canister_ids.json"
+  }
 }

@@ -12,11 +12,11 @@ use ic_cdk::api::caller;
 use ic_cdk::api::management_canister::ecdsa::{
     sign_with_ecdsa, EcdsaCurve, EcdsaKeyId, SignWithEcdsaArgument, SignWithEcdsaResponse,
 };
-use ic_cdk::trap;
-use num_bigint::BigUint;
 use ic_cdk::api::time;
 use ic_cdk::storage::{stable_restore, stable_save};
+use ic_cdk::trap;
 use ic_cdk_macros::{init, post_upgrade, pre_upgrade, query, update};
+use num_bigint::BigUint;
 use num_traits::ToPrimitive;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -313,6 +313,22 @@ struct InitArgs {
     daily_cap_token: Option<u64>,
 }
 
+impl Default for InitArgs {
+    fn default() -> Self {
+        Self {
+            admins: Vec::new(),
+            ecdsa_key_name: "test_key_1".to_string(),
+            chain_id: None,
+            ecdsa_derivation_path: None,
+            threshold_wei: Some(Nat::from(0u32)),
+            max_fee_multiplier: Some(2.0),
+            priority_multiplier: Some(1.2),
+            rate_limit_per_min: Some(10),
+            daily_cap_token: Some(10_000),
+        }
+    }
+}
+
 fn state_mut<T>(f: impl FnOnce(&mut RelayerState) -> T) -> T {
     STATE.with(|cell| {
         let mut guard = cell.borrow_mut();
@@ -341,7 +357,8 @@ fn ensure_admin() -> InternalResult<()> {
 }
 
 #[init]
-fn init(args: InitArgs) {
+fn init(args: Option<InitArgs>) {
+    let args = args.unwrap_or_default();
     let mut admins: BTreeSet<Principal> = args.admins.into_iter().collect();
     admins.insert(caller());
 
@@ -482,6 +499,35 @@ fn set_relayer_address(address: String) {
         Err(err) => ic_cdk::trap(&err.to_string()),
     };
     state_mut(|state| state.config.evm_addr = Some(normalized));
+}
+
+#[query]
+fn get_relayer_address() -> Option<String> {
+    state_ref(|state| state.config.evm_addr.clone())
+}
+
+#[update]
+async fn refresh_gas_balance() -> Result<Nat, String> {
+    let (address_opt, chain_id_opt) =
+        state_ref(|state| (state.config.evm_addr.clone(), state.config.chain_id.clone()));
+
+    let address = address_opt.ok_or_else(|| RelayError::RelayerAddressMissing.to_string())?;
+    let chain_id_nat = chain_id_opt.ok_or_else(|| {
+        RelayError::ConfigurationMissing {
+            field: "chain_id".into(),
+        }
+        .to_string()
+    })?;
+
+    let chain_id_u64 = nat_to_u64(&chain_id_nat).map_err(|e| e.to_string())?;
+
+    let balance = fetch_balance(chain_id_u64, &address)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    state_mut(|state| state.last_known_gas = balance.clone());
+
+    Ok(balance)
 }
 
 #[update]
@@ -1613,7 +1659,6 @@ async fn rpc_request(chain_id: u64, payload: Value) -> InternalResult<Value> {
         .cloned()
         .ok_or(RelayError::RpcResultTypeMismatch { expected: "result" })
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;

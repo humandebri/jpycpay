@@ -1,0 +1,14 @@
+/Users/0xhude/Desktop/ICP/jpycpay/target/wasm32-unknown-unknown/release/deps/serde-8e6013ffebf54c28.d: /Users/0xhude/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs /Users/0xhude/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs /Users/0xhude/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs /Users/0xhude/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs /Users/0xhude/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs /Users/0xhude/Desktop/ICP/jpycpay/target/wasm32-unknown-unknown/release/build/serde-a1d0854b6b56eeb6/out/private.rs
+
+/Users/0xhude/Desktop/ICP/jpycpay/target/wasm32-unknown-unknown/release/deps/libserde-8e6013ffebf54c28.rlib: /Users/0xhude/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs /Users/0xhude/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs /Users/0xhude/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs /Users/0xhude/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs /Users/0xhude/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs /Users/0xhude/Desktop/ICP/jpycpay/target/wasm32-unknown-unknown/release/build/serde-a1d0854b6b56eeb6/out/private.rs
+
+/Users/0xhude/Desktop/ICP/jpycpay/target/wasm32-unknown-unknown/release/deps/libserde-8e6013ffebf54c28.rmeta: /Users/0xhude/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs /Users/0xhude/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs /Users/0xhude/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs /Users/0xhude/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs /Users/0xhude/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs /Users/0xhude/Desktop/ICP/jpycpay/target/wasm32-unknown-unknown/release/build/serde-a1d0854b6b56eeb6/out/private.rs
+
+/Users/0xhude/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs:
+/Users/0xhude/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs:
+/Users/0xhude/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs:
+/Users/0xhude/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs:
+/Users/0xhude/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs:
+/Users/0xhude/Desktop/ICP/jpycpay/target/wasm32-unknown-unknown/release/build/serde-a1d0854b6b56eeb6/out/private.rs:
+
+# env-dep:OUT_DIR=/Users/0xhude/Desktop/ICP/jpycpay/target/wasm32-unknown-unknown/release/build/serde-a1d0854b6b56eeb6/out
