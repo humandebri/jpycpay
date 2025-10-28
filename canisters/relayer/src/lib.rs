@@ -60,14 +60,113 @@ struct RpcTarget {
 }
 
 #[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
-enum RpcService {
-    Chain(u64),
+struct RpcApi {
+    url: String,
+    headers: Option<Vec<HttpHeader>>,
 }
 
 #[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
-struct RpcCanisterError {
+struct HttpHeader {
+    name: String,
+    value: String,
+}
+
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+enum RpcService {
+    Provider(u64),
+    Custom(RpcApi),
+    EthSepolia(EthSepoliaService),
+    EthMainnet(EthMainnetService),
+    ArbitrumOne(L2MainnetService),
+    BaseMainnet(L2MainnetService),
+    OptimismMainnet(L2MainnetService),
+}
+
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+enum EthMainnetService {
+    Alchemy,
+    Ankr,
+    BlockPi,
+    Cloudflare,
+    PublicNode,
+    Llama,
+}
+
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+enum EthSepoliaService {
+    Alchemy,
+    Ankr,
+    BlockPi,
+    PublicNode,
+    Sepolia,
+}
+
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+enum L2MainnetService {
+    Alchemy,
+    Ankr,
+    BlockPi,
+    PublicNode,
+    Llama,
+}
+
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+enum RequestResult {
+    Ok(String),
+    Err(RpcError),
+}
+
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+enum RpcError {
+    JsonRpcError(JsonRpcError),
+    ProviderError(ProviderError),
+    ValidationError(ValidationError),
+    HttpOutcallError(HttpOutcallError),
+}
+
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+struct JsonRpcError {
     code: i64,
     message: String,
+}
+
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+enum ProviderError {
+    TooFewCycles { expected: Nat, received: Nat },
+    MissingRequiredProvider,
+    ProviderNotFound,
+    NoPermission,
+    InvalidRpcConfig(String),
+}
+
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+enum ValidationError {
+    Custom(String),
+    InvalidHex(String),
+}
+
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+enum HttpOutcallError {
+    IcError {
+        code: RejectionCode,
+        message: String,
+    },
+    InvalidHttpJsonRpcResponse {
+        status: u16,
+        body: String,
+        parsing_error: Option<String>,
+    },
+}
+
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+enum RejectionCode {
+    NoError,
+    CanisterError,
+    SysTransient,
+    DestinationInvalid,
+    Unknown,
+    SysFatal,
+    CanisterReject,
 }
 
 #[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
@@ -1613,20 +1712,17 @@ fn get_rpc_target() -> InternalResult<RpcTarget> {
     })
 }
 
-async fn rpc_request(chain_id: u64, payload: Value) -> InternalResult<Value> {
+async fn rpc_request(_chain_id: u64, payload: Value) -> InternalResult<Value> {
     let target = get_rpc_target()?;
+    let rpc_service = resolve_rpc_service(&target.network)?;
     let payload_str = serde_json::to_string(&payload).map_err(|err| RelayError::JsonError {
         message: err.to_string(),
     })?;
 
-    let (response,): (Result<String, RpcCanisterError>,) = call_with_payment128(
+    let (response,): (RequestResult,) = call_with_payment128(
         target.canister,
         "request",
-        (
-            RpcService::Chain(chain_id),
-            payload_str,
-            RPC_RESPONSE_ESTIMATE,
-        ),
+        (rpc_service, payload_str, RPC_RESPONSE_ESTIMATE),
         RPC_CALL_CYCLES,
     )
     .await
@@ -1635,10 +1731,10 @@ async fn rpc_request(chain_id: u64, payload: Value) -> InternalResult<Value> {
         message,
     })?;
 
-    let body = response.map_err(|err| RelayError::RpcError {
-        code: err.code,
-        message: err.message,
-    })?;
+    let body = match response {
+        RequestResult::Ok(body) => body,
+        RequestResult::Err(err) => return Err(relay_error_from_rpc_error(err)),
+    };
 
     let value: Value = serde_json::from_str(&body).map_err(|err| RelayError::JsonError {
         message: err.to_string(),
@@ -1658,6 +1754,125 @@ async fn rpc_request(chain_id: u64, payload: Value) -> InternalResult<Value> {
         .get("result")
         .cloned()
         .ok_or(RelayError::RpcResultTypeMismatch { expected: "result" })
+}
+
+fn resolve_rpc_service(network: &str) -> InternalResult<RpcService> {
+    let trimmed = network.trim();
+    if trimmed.is_empty() {
+        return Err(RelayError::ConfigurationMissing {
+            field: "rpc_target.network".into(),
+        });
+    }
+    if let Some(rest) = trimmed.strip_prefix("provider:") {
+        let id = rest
+            .trim()
+            .parse::<u64>()
+            .map_err(|_| RelayError::ConfigurationMissing {
+                field: format!("invalid provider id '{}'", rest),
+            })?;
+        return Ok(RpcService::Provider(id));
+    }
+    if let Some(rest) = trimmed.strip_prefix("custom:") {
+        let url = rest.trim();
+        if url.is_empty() {
+            return Err(RelayError::ConfigurationMissing {
+                field: "rpc_target.network (custom url)".into(),
+            });
+        }
+        return Ok(RpcService::Custom(RpcApi {
+            url: url.to_string(),
+            headers: None,
+        }));
+    }
+    if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+        return Ok(RpcService::Custom(RpcApi {
+            url: trimmed.to_string(),
+            headers: None,
+        }));
+    }
+
+    match trimmed {
+        "polygon-amoy" => Ok(RpcService::Custom(RpcApi {
+            url: "https://rpc-amoy.polygon.technology".to_string(),
+            headers: None,
+        })),
+        "polygon-mainnet" => Ok(RpcService::Custom(RpcApi {
+            url: "https://polygon-rpc.com".to_string(),
+            headers: None,
+        })),
+        "eth-mainnet" => Ok(RpcService::EthMainnet(EthMainnetService::PublicNode)),
+        "eth-sepolia" => Ok(RpcService::EthSepolia(EthSepoliaService::PublicNode)),
+        "arbitrum-one" => Ok(RpcService::ArbitrumOne(L2MainnetService::PublicNode)),
+        "base-mainnet" => Ok(RpcService::BaseMainnet(L2MainnetService::PublicNode)),
+        "optimism-mainnet" => Ok(RpcService::OptimismMainnet(L2MainnetService::PublicNode)),
+        other => Err(RelayError::ConfigurationMissing {
+            field: format!("unsupported rpc network: {}", other),
+        }),
+    }
+}
+
+fn relay_error_from_rpc_error(err: RpcError) -> RelayError {
+    match err {
+        RpcError::JsonRpcError(json) => RelayError::RpcError {
+            code: json.code,
+            message: json.message,
+        },
+        RpcError::ProviderError(provider) => RelayError::RpcTransportError {
+            code: "ProviderError".to_string(),
+            message: describe_provider_error(provider),
+        },
+        RpcError::ValidationError(validation) => RelayError::RpcError {
+            code: -32_000,
+            message: describe_validation_error(validation),
+        },
+        RpcError::HttpOutcallError(http) => RelayError::RpcTransportError {
+            code: "HttpOutcallError".to_string(),
+            message: describe_http_outcall_error(http),
+        },
+    }
+}
+
+fn describe_provider_error(err: ProviderError) -> String {
+    match err {
+        ProviderError::TooFewCycles { expected, received } => format!(
+            "too few cycles: expected {}, received {}",
+            expected, received
+        ),
+        ProviderError::MissingRequiredProvider => "missing required provider".into(),
+        ProviderError::ProviderNotFound => "provider not found".into(),
+        ProviderError::NoPermission => "no permission to use provider".into(),
+        ProviderError::InvalidRpcConfig(config) => {
+            format!("invalid rpc config: {}", config)
+        }
+    }
+}
+
+fn describe_validation_error(err: ValidationError) -> String {
+    match err {
+        ValidationError::Custom(msg) => msg,
+        ValidationError::InvalidHex(value) => format!("invalid hex value: {}", value),
+    }
+}
+
+fn describe_http_outcall_error(err: HttpOutcallError) -> String {
+    match err {
+        HttpOutcallError::IcError { code, message } => {
+            format!("ic error {:?}: {}", code, message)
+        }
+        HttpOutcallError::InvalidHttpJsonRpcResponse {
+            status,
+            body,
+            parsing_error,
+        } => {
+            let parsing = parsing_error
+                .map(|p| format!(", parsing_error: {}", p))
+                .unwrap_or_default();
+            format!(
+                "invalid http json rpc response (status {}{}), body: {}",
+                status, parsing, body
+            )
+        }
+    }
 }
 #[cfg(test)]
 mod tests {
