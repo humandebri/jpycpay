@@ -1115,7 +1115,14 @@ fn parse_hex_bytes(value: &str) -> InternalResult<Vec<u8>> {
             value: trimmed.to_string(),
         });
     }
-    hex::decode(&trimmed[2..]).map_err(|_| RelayError::HexDecodeFailed {
+    let mut body = trimmed[2..].to_string();
+    if body.is_empty() {
+        return Ok(vec![]);
+    }
+    if body.len() % 2 != 0 {
+        body = format!("0{}", body);
+    }
+    hex::decode(&body).map_err(|_| RelayError::HexDecodeFailed {
         value: trimmed.to_string(),
     })
 }

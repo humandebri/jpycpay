@@ -211,7 +211,7 @@ service : {
 ### 3.3 EVM RPC キャニスター経由の呼び出し
 
 * `eth_call / eth_estimateGas / eth_sendRawTransaction` は EVM RPC キャニスターの `request` を利用。
-* `call_with_payment128` で十分な cycles を添付し、`RpcService::Chain(chainId)` を指定して JSON-RPC ペイロードを送信する。
+* `call_with_payment128` で十分な cycles を添付し、ネットワーク設定文字列に応じて適切な `RpcService` を組み立てたうえで JSON-RPC ペイロードを送信する（v0.5 以降は `RpcService::Chain` が廃止されたため注意）。
 * 応答は JSON 文字列。`error` フィールドが存在する場合は `RpcError` を組み立て、`result` をパースして利用する。
 * `set_chain_id` により EIP-712 ドメインと RPC 呼び出し先チェーンを切り替え、`set_rpc_target` は接続先キャニスターの記録に専念させる。
 
@@ -250,6 +250,9 @@ dfx deploy relayer
 ### 4.2 ステージング（Polygon Amoy）
 
 * EVM RPC ネットワークを `polygon-amoy` に設定。
+  - 例: `dfx canister --network ic call relayer set_rpc_target '(principal "7hfb6-caaaa-aaaar-qadga-cai", "polygon-amoy")'`
+  - `polygon-amoy` / `polygon-mainnet` は内部で公式パブリック RPC URL（Amoy: `https://rpc-amoy.polygon.technology`, Mainnet: `https://polygon-rpc.com`）に解決される。
+  - 独自 RPC を使う場合は `custom:https://example.com`、特定プロバイダ ID を指定する場合は `provider:<ID>` の形式を使う。
 * 少額で正常系/失敗系の E2E テストを実施。
 
 ### 4.3 本番（Polygon Mainnet）
