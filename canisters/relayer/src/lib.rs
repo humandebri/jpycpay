@@ -1881,6 +1881,13 @@ fn describe_http_outcall_error(err: HttpOutcallError) -> String {
         }
     }
 }
+
+candid::export_service!();
+
+#[query(name = "__get_candid_interface_tmp_hack")]
+fn export_service() -> String {
+    __export_service()
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1900,5 +1907,12 @@ mod tests {
 
         let n64 = Nat::from(1_000_000_u64);
         assert_eq!(nat_to_u64(&n64).unwrap(), 1_000_000_u64);
+    }
+
+    #[test]
+    fn generate_candid() {
+        let did = super::__export_service();
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("relayer.did");
+        std::fs::write(path, did).unwrap();
     }
 }

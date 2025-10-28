@@ -1,50 +1,56 @@
-type AssetStatus = variant { Active; Deprecated; Disabled };
-
-type SubmitAuthorizationRequest = record {
-  asset: principal;
-  from: blob;
-  to: blob;
-  value: nat;
-  valid_after: nat;
-  valid_before: nat;
-  nonce: blob;
-  sig_v: nat8;
-  sig_r: blob;
-  sig_s: blob;
-};
-
-type SubmitAuthorizationResponse = variant { ok: text; err: text };
-
 type InfoResponse = record {
-  relayer_addr: text;
-  gas_wei: nat;
-  threshold_wei: nat;
+  relayer_addr : text;
+  threshold_wei : nat;
+  gas_wei : nat;
 };
-
+type InitArgs = record {
+  daily_cap_token : opt nat64;
+  ecdsa_key_name : text;
+  priority_multiplier : opt float64;
+  ecdsa_derivation_path : opt vec blob;
+  rate_limit_per_min : opt nat32;
+  chain_id : opt nat;
+  threshold_wei : opt nat;
+  admins : vec principal;
+  max_fee_multiplier : opt float64;
+};
 type LogEntry = record {
-  id: nat64;
-  ts: nat64;
-  from: text;
-  to: text;
-  value: nat;
-  tx: opt text;
-  status: text;
-  fail_reason: opt text;
+  id : nat64;
+  to : text;
+  ts : nat64;
+  tx : opt text;
+  status : text;
+  value : nat;
+  from : text;
+  fail_reason : opt text;
 };
-
-service : {
-  submit_authorization: (SubmitAuthorizationRequest) -> (SubmitAuthorizationResponse);
-  info: () -> (InfoResponse) query;
-  logs: (opt nat64, nat32) -> (vec LogEntry) query;
-  set_rpc_target: (principal, text) -> ();
-  set_threshold: (nat) -> ();
-  set_chain_id: (nat) -> ();
-  set_ecdsa_derivation_path: (vec blob) -> ();
-  set_relayer_address: (text) -> ();
-  get_relayer_address: () -> (opt text) query;
-  refresh_gas_balance: () -> (variant { ok: nat; err: text });
-  add_asset: (principal, text, nat) -> ();
-  deprecate_asset: (principal) -> ();
-  disable_asset: (principal) -> ();
-  pause: (bool) -> ();
+type Result = variant { Ok : nat; Err : text };
+type Result_1 = variant { Ok : text; Err : text };
+type SubmitAuthorizationRequest = record {
+  to : blob;
+  valid_after : nat;
+  asset : principal;
+  valid_before : nat;
+  value : nat;
+  from : blob;
+  sig_r : blob;
+  sig_s : blob;
+  sig_v : nat8;
+  nonce : blob;
+};
+service : (opt InitArgs) -> {
+  add_asset : (principal, text, nat) -> ();
+  deprecate_asset : (principal) -> ();
+  disable_asset : (principal) -> ();
+  get_relayer_address : () -> (opt text) query;
+  info : () -> (InfoResponse) query;
+  logs : (opt nat64, nat32) -> (vec LogEntry) query;
+  pause : (bool) -> ();
+  refresh_gas_balance : () -> (Result);
+  set_chain_id : (nat) -> ();
+  set_ecdsa_derivation_path : (vec blob) -> ();
+  set_relayer_address : (text) -> ();
+  set_rpc_target : (principal, text) -> ();
+  set_threshold : (nat) -> ();
+  submit_authorization : (SubmitAuthorizationRequest) -> (Result_1);
 }
