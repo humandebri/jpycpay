@@ -1172,8 +1172,8 @@ fn scale_nat(value: &Nat, multiplier: f64) -> InternalResult<Nat> {
 }
 
 const JPYC_UNIT_MULTIPLIER: u128 = 1_000_000_000_000_000_000;
-const RPC_CALL_CYCLES: u128 = 25_000_000_000;
-const RPC_RESPONSE_MAX_BYTES: u64 = 256 * 1024;
+const RPC_CALL_CYCLES: u128 = 2_000_000_000;
+const RPC_RESPONSE_MAX_BYTES: u64 = 64 * 1024;
 static JSON_RPC_ID: AtomicU64 = AtomicU64::new(1);
 
 fn daily_cap_in_smallest_unit(config: &RateLimitConfig) -> Option<Nat> {
