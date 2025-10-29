@@ -8,16 +8,13 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::convert::TryFrom;
 
 use candid::{CandidType, Nat, Principal};
-use ic_cdk::api::caller;
-use ic_cdk::api::management_canister::ecdsa::{
-    ecdsa_public_key, sign_with_ecdsa, EcdsaCurve, EcdsaKeyId, EcdsaPublicKeyArgument,
-    EcdsaPublicKeyResponse, SignWithEcdsaArgument, SignWithEcdsaResponse,
+use ic_cdk::api::{msg_caller, stable_size, time};
+use ic_cdk::call::Call;
+use ic_cdk::management_canister::{
+    ecdsa_public_key, sign_with_ecdsa, transform_context_from_query, EcdsaCurve, EcdsaKeyId,
+    EcdsaPublicKeyArgs, EcdsaPublicKeyResult, HttpHeader as IcHttpHeader, HttpMethod,
+    HttpRequestArgs, HttpRequestResult, SignWithEcdsaArgs, SignWithEcdsaResult, TransformArgs,
 };
-use ic_cdk::api::management_canister::http_request::{
-    self, CanisterHttpRequestArgument, HttpHeader as IcHttpHeader, HttpMethod,
-};
-use ic_cdk::api::stable::stable64_size;
-use ic_cdk::api::time;
 use ic_cdk::storage::{stable_restore, stable_save};
 use ic_cdk::trap;
 use ic_cdk_macros::{init, post_upgrade, pre_upgrade, query, update};
@@ -353,7 +350,7 @@ fn state_ref<T>(f: impl FnOnce(&RelayerState) -> T) -> T {
 }
 
 fn ensure_admin() -> InternalResult<()> {
-    let caller = caller();
+    let caller = msg_caller();
     state_ref(|state| {
         if state.admins.contains(&caller) {
             Ok(())
@@ -367,7 +364,7 @@ fn ensure_admin() -> InternalResult<()> {
 fn init(args: Option<InitArgs>) {
     let args = args.unwrap_or_default();
     let mut admins: BTreeSet<Principal> = args.admins.into_iter().collect();
-    admins.insert(caller());
+    admins.insert(msg_caller());
 
     let config = RelayerConfig {
         evm_addr: None,
@@ -405,11 +402,11 @@ fn init(args: Option<InitArgs>) {
 #[pre_upgrade]
 fn pre_upgrade() {
     let snapshot = STATE.with(|cell| cell.borrow().clone());
-    let stable_pages_before = stable64_size();
+    let stable_pages_before = stable_size();
     if let Err(e) = stable_save((snapshot,)) {
         trap(&format!("failed to save state: {}", e));
     }
-    let stable_pages_after = stable64_size();
+    let stable_pages_after = stable_size();
     let written_pages = stable_pages_after.saturating_sub(stable_pages_before);
     let written_bytes = written_pages * WASM_PAGE_BYTES;
     ic_cdk::println!(
@@ -422,10 +419,10 @@ fn pre_upgrade() {
 
 #[post_upgrade]
 fn post_upgrade() {
-    let stable_pages_before = stable64_size();
+    let stable_pages_before = stable_size();
     let (snapshot,): (Option<RelayerState>,) =
         stable_restore().unwrap_or_else(|e| trap(&format!("failed to restore state: {}", e)));
-    let stable_pages_after = stable64_size();
+    let stable_pages_after = stable_size();
     ic_cdk::println!(
         "[relayer] post_upgrade: stable_pages_before={}, stable_pages_after={}, restored_logs={}, restored_assets={}",
         stable_pages_before,
@@ -446,7 +443,7 @@ fn post_upgrade() {
 
 #[query]
 fn info() -> InfoResponse {
-    let cycles = ic_cdk::api::canister_balance128();
+    let cycles = ic_cdk::api::canister_cycle_balance();
     state_ref(|state| InfoResponse {
         relayer_addr: state
             .config
@@ -568,18 +565,18 @@ async fn derive_relayer_address() -> Result<String, String> {
             state.config.ecdsa_derivation_path.clone(),
         )
     });
-    let arg = EcdsaPublicKeyArgument {
-        canister_id: Some(ic_cdk::id()),
+    let arg = EcdsaPublicKeyArgs {
+        canister_id: Some(ic_cdk::api::canister_self()),
         derivation_path: derivation_path.clone(),
         key_id: EcdsaKeyId {
             curve: EcdsaCurve::Secp256k1,
             name: key_name,
         },
     };
-    let (EcdsaPublicKeyResponse { public_key, .. },) =
-        ecdsa_public_key(arg)
+    let EcdsaPublicKeyResult { public_key, .. } =
+        ecdsa_public_key(&arg)
             .await
-            .map_err(|(code, message)| format!("ecdsa_public_key failed {:?}: {}", code, message))?;
+            .map_err(|err| format!("ecdsa_public_key failed: {}", err))?;
     let verifying_key = VerifyingKey::from_sec1_bytes(&public_key)
         .map_err(|err| format!("invalid public key bytes: {}", err))?;
     let encoded = verifying_key.to_encoded_point(false);
@@ -1495,7 +1492,7 @@ async fn sign_prehashed_message(
     message_hash: &[u8; 32],
     expected_address: &[u8; 20],
 ) -> InternalResult<SignatureParts> {
-    let arg = SignWithEcdsaArgument {
+    let arg = SignWithEcdsaArgs {
         message_hash: message_hash.to_vec(),
         derivation_path: derivation_path.to_vec(),
         key_id: EcdsaKeyId {
@@ -1504,13 +1501,12 @@ async fn sign_prehashed_message(
         },
     };
 
-    let (SignWithEcdsaResponse { signature },) =
-        sign_with_ecdsa(arg)
-            .await
-            .map_err(|(code, message)| RelayError::RpcTransportError {
-                code: format!("{:?}", code),
-                message,
-            })?;
+    let SignWithEcdsaResult { signature } = sign_with_ecdsa(&arg)
+        .await
+        .map_err(|err| RelayError::RpcTransportError {
+            code: "sign_with_ecdsa".into(),
+            message: err.to_string(),
+        })?;
     let (r_bytes, s_bytes, y_parity) = match signature.len() {
         65 => (
             signature[0..32].to_vec(),
@@ -1785,20 +1781,31 @@ async fn rpc_request(_chain_id: u64, payload: Value) -> InternalResult<Value> {
         },
     ];
 
-    let request = CanisterHttpRequestArgument {
+    let request = HttpRequestArgs {
         url: endpoint,
         method: HttpMethod::POST,
         body: Some(body_bytes),
         max_response_bytes: Some(RPC_RESPONSE_MAX_BYTES),
         headers,
-        transform: None,
+        transform: Some(transform_context_from_query(
+            "transform_http".to_string(),
+            vec![],
+        )),
+        is_replicated: Some(false),
     };
 
-    let (response,) = http_request::http_request(request, RPC_CALL_CYCLES)
+    let response: HttpRequestResult = Call::unbounded_wait(Principal::management_canister(), "http_request")
+        .with_arg(&request)
+        .with_cycles(RPC_CALL_CYCLES)
         .await
-        .map_err(|(code, message)| RelayError::RpcTransportError {
-            code: format!("{:?}", code),
-            message,
+        .map_err(|err| RelayError::RpcTransportError {
+            code: format!("{:?}", err),
+            message: err.to_string(),
+        })?
+        .candid()
+        .map_err(|err| RelayError::RpcTransportError {
+            code: "CandidDecode".into(),
+            message: err.to_string(),
         })?;
 
     let status = response
@@ -1837,6 +1844,13 @@ async fn rpc_request(_chain_id: u64, payload: Value) -> InternalResult<Value> {
         .get("result")
         .cloned()
         .ok_or(RelayError::RpcResultTypeMismatch { expected: "result" })
+}
+
+#[query]
+fn transform_http(args: TransformArgs) -> HttpRequestResult {
+    let mut response = args.response;
+    response.headers.clear();
+    response
 }
 
 candid::export_service!();
