@@ -50,7 +50,7 @@ export const idlFactory = ({ IDL }: { IDL: CandidIDL }) => {
     set_chain_id: IDL.Func([IDL.Nat], [], []),
     set_ecdsa_derivation_path: IDL.Func([IDL.Vec(IDL.Vec(IDL.Nat8))], [], []),
     set_relayer_address: IDL.Func([IDL.Text], [], []),
-    set_rpc_target: IDL.Func([IDL.Principal, IDL.Text], [], []),
+    set_rpc_endpoint: IDL.Func([IDL.Text], [], []),
     set_threshold: IDL.Func([IDL.Nat], [], []),
     submit_authorization: IDL.Func([SubmitAuthorizationRequest], [Result_1], []),
   });
@@ -114,7 +114,7 @@ export interface _SERVICE {
   set_chain_id: (arg_0: bigint) => Promise<void>;
   set_ecdsa_derivation_path: (arg_0: Uint8Array[]) => Promise<void>;
   set_relayer_address: (arg_0: string) => Promise<void>;
-  set_rpc_target: (arg_0: Principal, arg_1: string) => Promise<void>;
+  set_rpc_endpoint: (arg_0: string) => Promise<void>;
   set_threshold: (arg_0: bigint) => Promise<void>;
   submit_authorization: (arg_0: SubmitAuthorizationRequest) => Promise<Result_1>;
 }

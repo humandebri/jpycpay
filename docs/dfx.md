@@ -37,7 +37,7 @@ dfx canister --network ic install evkq6-tyaaa-aaaar-qbxza-cai --no-wallet \
 ```
 CID=evkq6-tyaaa-aaaar-qbxza-cai
 
-dfx canister --network ic call $CID set_rpc_target '(principal "7hfb6-caaaa-aaaar-qadga-cai", "polygon-mainnet")'
+dfx canister --network ic call $CID set_rpc_endpoint '("https://polygon-rpc.com")'
 dfx canister --network ic call $CID set_chain_id '(137 : nat)'
 dfx canister --network ic call $CID set_ecdsa_derivation_path '(vec { blob "\00\00\00\00" })'
 dfx canister --network ic call $CID derive_relayer_address '()'

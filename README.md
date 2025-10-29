@@ -18,7 +18,7 @@
 cargo build --target wasm32-unknown-unknown --release --package relayer
 dfx deploy relayer
 # 例: 管理設定投入
-# dfx canister call relayer set_rpc_target '("br5f7-7uaaa-aaaaa-qaaca-cai", "polygon-mainnet")'
+# dfx canister call relayer set_rpc_endpoint '("https://polygon-rpc.com")'
 # dfx canister call relayer set_chain_id '(137)'
 # dfx canister call relayer set_ecdsa_derivation_path '(vec { blob "\\00..." })'
 # dfx canister call relayer set_relayer_address '("0x...")'

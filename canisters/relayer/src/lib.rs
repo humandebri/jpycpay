@@ -1,18 +1,20 @@
 //! ICP Relayer canister skeleton for gasless JPYC transfers via EIP-3009.
 //! This implementation sets up the persistent state, admin APIs, and an
-//! entry point to submit authorizations. EVM RPC integration is modelled
-//! via structured requests to the official EVM RPC canister.
+//! entry point to submit authorizations. RPC interactions are issued via
+//! direct HTTP outcalls to the configured Ethereum RPC endpoint.
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::convert::TryFrom;
 
 use candid::{CandidType, Nat, Principal};
-use ic_cdk::api::call::call_with_payment128;
 use ic_cdk::api::caller;
 use ic_cdk::api::management_canister::ecdsa::{
     ecdsa_public_key, sign_with_ecdsa, EcdsaCurve, EcdsaKeyId, EcdsaPublicKeyArgument,
     EcdsaPublicKeyResponse, SignWithEcdsaArgument, SignWithEcdsaResponse,
+};
+use ic_cdk::api::management_canister::http_request::{
+    self, CanisterHttpRequestArgument, HttpHeader as IcHttpHeader, HttpMethod,
 };
 use ic_cdk::api::stable::stable64_size;
 use ic_cdk::api::time;
@@ -53,126 +55,10 @@ struct RelayerConfig {
     ecdsa_derivation_path: Vec<Vec<u8>>,
     chain_id: Option<Nat>,
     threshold_wei: Nat,
-    rpc_target: Option<RpcTarget>,
+    rpc_endpoint: Option<String>,
     max_fee_multiplier: f64,
     priority_multiplier: f64,
     paused: bool,
-}
-
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
-struct RpcTarget {
-    canister: Principal,
-    network: String,
-}
-
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
-struct RpcApi {
-    url: String,
-    headers: Option<Vec<HttpHeader>>,
-}
-
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
-struct HttpHeader {
-    name: String,
-    value: String,
-}
-
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
-enum RpcService {
-    Provider(u64),
-    Custom(RpcApi),
-    EthSepolia(EthSepoliaService),
-    EthMainnet(EthMainnetService),
-    ArbitrumOne(L2MainnetService),
-    BaseMainnet(L2MainnetService),
-    OptimismMainnet(L2MainnetService),
-}
-
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
-enum EthMainnetService {
-    Alchemy,
-    Ankr,
-    BlockPi,
-    Cloudflare,
-    PublicNode,
-    Llama,
-}
-
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
-enum EthSepoliaService {
-    Alchemy,
-    Ankr,
-    BlockPi,
-    PublicNode,
-    Sepolia,
-}
-
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
-enum L2MainnetService {
-    Alchemy,
-    Ankr,
-    BlockPi,
-    PublicNode,
-    Llama,
-}
-
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
-enum RequestResult {
-    Ok(String),
-    Err(RpcError),
-}
-
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
-enum RpcError {
-    JsonRpcError(JsonRpcError),
-    ProviderError(ProviderError),
-    ValidationError(ValidationError),
-    HttpOutcallError(HttpOutcallError),
-}
-
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
-struct JsonRpcError {
-    code: i64,
-    message: String,
-}
-
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
-enum ProviderError {
-    TooFewCycles { expected: Nat, received: Nat },
-    MissingRequiredProvider,
-    ProviderNotFound,
-    NoPermission,
-    InvalidRpcConfig(String),
-}
-
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
-enum ValidationError {
-    Custom(String),
-    InvalidHex(String),
-}
-
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
-enum HttpOutcallError {
-    IcError {
-        code: RejectionCode,
-        message: String,
-    },
-    InvalidHttpJsonRpcResponse {
-        status: u16,
-        body: String,
-        parsing_error: Option<String>,
-    },
-}
-
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
-enum RejectionCode {
-    NoError,
-    CanisterError,
-    SysTransient,
-    DestinationInvalid,
-    Unknown,
-    SysFatal,
-    CanisterReject,
 }
 
 #[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
@@ -489,7 +375,7 @@ fn init(args: Option<InitArgs>) {
         ecdsa_derivation_path: args.ecdsa_derivation_path.unwrap_or_default(),
         chain_id: args.chain_id,
         threshold_wei: args.threshold_wei.unwrap_or_else(|| Nat::from(0_u32)),
-        rpc_target: None,
+        rpc_endpoint: None,
         max_fee_multiplier: args.max_fee_multiplier.unwrap_or(2.0),
         priority_multiplier: args.priority_multiplier.unwrap_or(1.2),
         paused: true,
@@ -616,11 +502,18 @@ fn logs(start_after: Option<u64>, limit: u32) -> Vec<LogEntry> {
 }
 
 #[update]
-fn set_rpc_target(canister: Principal, network: String) {
+fn set_rpc_endpoint(url: String) {
     if let Err(err) = ensure_admin() {
         ic_cdk::trap(&err.to_string());
     }
-    state_mut(|state| state.config.rpc_target = Some(RpcTarget { canister, network }));
+    let trimmed = url.trim();
+    if trimmed.is_empty() {
+        ic_cdk::trap("rpc endpoint url must not be empty");
+    }
+    if !(trimmed.starts_with("https://") || trimmed.starts_with("http://")) {
+        ic_cdk::trap("rpc endpoint url must start with http:// or https://");
+    }
+    state_mut(|state| state.config.rpc_endpoint = Some(trimmed.to_string()));
 }
 
 #[update]
@@ -860,10 +753,10 @@ async fn submit_authorization_internal(req: SubmitAuthorizationRequest) -> Inter
         id
     });
 
-    if state_ref(|state| state.config.rpc_target.is_none()) {
-        mark_log_failure(log_id, "rpc target not configured");
+    if state_ref(|state| state.config.rpc_endpoint.is_none()) {
+        mark_log_failure(log_id, "rpc endpoint not configured");
         return Err(RelayError::ConfigurationMissing {
-            field: "rpc_target".into(),
+            field: "rpc_endpoint".into(),
         });
     }
 
@@ -1280,7 +1173,7 @@ fn scale_nat(value: &Nat, multiplier: f64) -> InternalResult<Nat> {
 
 const JPYC_UNIT_MULTIPLIER: u128 = 1_000_000_000_000_000_000;
 const RPC_CALL_CYCLES: u128 = 25_000_000_000;
-const RPC_RESPONSE_ESTIMATE: u64 = 64 * 1024;
+const RPC_RESPONSE_MAX_BYTES: u64 = 256 * 1024;
 static JSON_RPC_ID: AtomicU64 = AtomicU64::new(1);
 
 fn daily_cap_in_smallest_unit(config: &RateLimitConfig) -> Option<Nat> {
@@ -1868,36 +1761,64 @@ fn next_json_rpc_id() -> u64 {
     JSON_RPC_ID.fetch_add(1, Ordering::Relaxed)
 }
 
-fn get_rpc_target() -> InternalResult<RpcTarget> {
-    state_ref(|state| state.config.rpc_target.clone()).ok_or(RelayError::ConfigurationMissing {
-        field: "rpc_target".into(),
+fn get_rpc_endpoint() -> InternalResult<String> {
+    state_ref(|state| state.config.rpc_endpoint.clone()).ok_or(RelayError::ConfigurationMissing {
+        field: "rpc_endpoint".into(),
     })
 }
 
 async fn rpc_request(_chain_id: u64, payload: Value) -> InternalResult<Value> {
-    let target = get_rpc_target()?;
-    let rpc_service = resolve_rpc_service(&target.network)?;
+    let endpoint = get_rpc_endpoint()?;
     let payload_str = serde_json::to_string(&payload).map_err(|err| RelayError::JsonError {
         message: err.to_string(),
     })?;
+    let body_bytes = payload_str.into_bytes();
 
-    let (response,): (RequestResult,) = call_with_payment128(
-        target.canister,
-        "request",
-        (rpc_service, payload_str, RPC_RESPONSE_ESTIMATE),
-        RPC_CALL_CYCLES,
-    )
-    .await
-    .map_err(|(code, message)| RelayError::RpcTransportError {
-        code: format!("{:?}", code),
-        message,
-    })?;
+    let headers = vec![
+        IcHttpHeader {
+            name: "Content-Type".to_string(),
+            value: "application/json".to_string(),
+        },
+        IcHttpHeader {
+            name: "Idempotency-Key".to_string(),
+            value: format!("relayer-{}", next_json_rpc_id()),
+        },
+    ];
 
-    let body = match response {
-        RequestResult::Ok(body) => body,
-        RequestResult::Err(err) => return Err(relay_error_from_rpc_error(err)),
+    let request = CanisterHttpRequestArgument {
+        url: endpoint,
+        method: HttpMethod::POST,
+        body: Some(body_bytes),
+        max_response_bytes: Some(RPC_RESPONSE_MAX_BYTES),
+        headers,
+        transform: None,
     };
 
+    let (response,) = http_request::http_request(request, RPC_CALL_CYCLES)
+        .await
+        .map_err(|(code, message)| RelayError::RpcTransportError {
+            code: format!("{:?}", code),
+            message,
+        })?;
+
+    let status = response
+        .status
+        .0
+        .to_u64()
+        .unwrap_or(0);
+
+    if status != 200 {
+        let body_text = String::from_utf8(response.body.clone())
+            .unwrap_or_else(|_| "<non-utf8 body>".to_string());
+        return Err(RelayError::RpcTransportError {
+            code: format!("HTTP {}", status),
+            message: body_text,
+        });
+    }
+
+    let body = String::from_utf8(response.body).map_err(|err| RelayError::JsonError {
+        message: format!("invalid utf8: {}", err),
+    })?;
     let value: Value = serde_json::from_str(&body).map_err(|err| RelayError::JsonError {
         message: err.to_string(),
     })?;
@@ -1916,125 +1837,6 @@ async fn rpc_request(_chain_id: u64, payload: Value) -> InternalResult<Value> {
         .get("result")
         .cloned()
         .ok_or(RelayError::RpcResultTypeMismatch { expected: "result" })
-}
-
-fn resolve_rpc_service(network: &str) -> InternalResult<RpcService> {
-    let trimmed = network.trim();
-    if trimmed.is_empty() {
-        return Err(RelayError::ConfigurationMissing {
-            field: "rpc_target.network".into(),
-        });
-    }
-    if let Some(rest) = trimmed.strip_prefix("provider:") {
-        let id = rest
-            .trim()
-            .parse::<u64>()
-            .map_err(|_| RelayError::ConfigurationMissing {
-                field: format!("invalid provider id '{}'", rest),
-            })?;
-        return Ok(RpcService::Provider(id));
-    }
-    if let Some(rest) = trimmed.strip_prefix("custom:") {
-        let url = rest.trim();
-        if url.is_empty() {
-            return Err(RelayError::ConfigurationMissing {
-                field: "rpc_target.network (custom url)".into(),
-            });
-        }
-        return Ok(RpcService::Custom(RpcApi {
-            url: url.to_string(),
-            headers: None,
-        }));
-    }
-    if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
-        return Ok(RpcService::Custom(RpcApi {
-            url: trimmed.to_string(),
-            headers: None,
-        }));
-    }
-
-    match trimmed {
-        "polygon-amoy" => Ok(RpcService::Custom(RpcApi {
-            url: "https://rpc-amoy.polygon.technology".to_string(),
-            headers: None,
-        })),
-        "polygon-mainnet" => Ok(RpcService::Custom(RpcApi {
-            url: "https://polygon-rpc.com".to_string(),
-            headers: None,
-        })),
-        "eth-mainnet" => Ok(RpcService::EthMainnet(EthMainnetService::PublicNode)),
-        "eth-sepolia" => Ok(RpcService::EthSepolia(EthSepoliaService::PublicNode)),
-        "arbitrum-one" => Ok(RpcService::ArbitrumOne(L2MainnetService::PublicNode)),
-        "base-mainnet" => Ok(RpcService::BaseMainnet(L2MainnetService::PublicNode)),
-        "optimism-mainnet" => Ok(RpcService::OptimismMainnet(L2MainnetService::PublicNode)),
-        other => Err(RelayError::ConfigurationMissing {
-            field: format!("unsupported rpc network: {}", other),
-        }),
-    }
-}
-
-fn relay_error_from_rpc_error(err: RpcError) -> RelayError {
-    match err {
-        RpcError::JsonRpcError(json) => RelayError::RpcError {
-            code: json.code,
-            message: json.message,
-        },
-        RpcError::ProviderError(provider) => RelayError::RpcTransportError {
-            code: "ProviderError".to_string(),
-            message: describe_provider_error(provider),
-        },
-        RpcError::ValidationError(validation) => RelayError::RpcError {
-            code: -32_000,
-            message: describe_validation_error(validation),
-        },
-        RpcError::HttpOutcallError(http) => RelayError::RpcTransportError {
-            code: "HttpOutcallError".to_string(),
-            message: describe_http_outcall_error(http),
-        },
-    }
-}
-
-fn describe_provider_error(err: ProviderError) -> String {
-    match err {
-        ProviderError::TooFewCycles { expected, received } => format!(
-            "too few cycles: expected {}, received {}",
-            expected, received
-        ),
-        ProviderError::MissingRequiredProvider => "missing required provider".into(),
-        ProviderError::ProviderNotFound => "provider not found".into(),
-        ProviderError::NoPermission => "no permission to use provider".into(),
-        ProviderError::InvalidRpcConfig(config) => {
-            format!("invalid rpc config: {}", config)
-        }
-    }
-}
-
-fn describe_validation_error(err: ValidationError) -> String {
-    match err {
-        ValidationError::Custom(msg) => msg,
-        ValidationError::InvalidHex(value) => format!("invalid hex value: {}", value),
-    }
-}
-
-fn describe_http_outcall_error(err: HttpOutcallError) -> String {
-    match err {
-        HttpOutcallError::IcError { code, message } => {
-            format!("ic error {:?}: {}", code, message)
-        }
-        HttpOutcallError::InvalidHttpJsonRpcResponse {
-            status,
-            body,
-            parsing_error,
-        } => {
-            let parsing = parsing_error
-                .map(|p| format!(", parsing_error: {}", p))
-                .unwrap_or_default();
-            format!(
-                "invalid http json rpc response (status {}{}), body: {}",
-                status, parsing, body
-            )
-        }
-    }
 }
 
 candid::export_service!();

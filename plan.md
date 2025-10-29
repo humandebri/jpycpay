@@ -204,7 +204,7 @@ service : {
   logs: (opt nat64, nat32) -> (vec record { ts: nat64; from: text; to: text; value: nat; tx: text; status: text }) query;
 
   // admin
-  set_rpc_target: (principal, text) -> (); // (evm_rpc_canister, network)
+  set_rpc_endpoint: (text) -> ();
   set_threshold: (nat) -> ();
   set_chain_id: (nat) -> ();
   set_ecdsa_derivation_path: (vec blob) -> ();
@@ -221,7 +221,7 @@ service : {
 * すべての `eth_call / eth_estimateGas / eth_sendRawTransaction` は **EVM RPC キャニスター**（例: `br5f7-7uaaa-aaaaa-qaaca-cai`）の `request` メソッドを利用。
 * `call_with_payment128` で十分な cycles（例: `2_000_000_000_000`）を添付し、`RpcService::Chain(chainId)` を指定して JSON-RPC ペイロードを送信する。
 * レスポンスは JSON 文字列で返るため、`result` フィールドをパースし `error` が含まれる場合は `RpcError` として扱う。
-* `set_chain_id` で EIP-712 ドメインと RPC サービスの両方を切り替える。`set_rpc_target` は接続先キャニスターのみを記録（ネットワーク文字列はメモ用途）。
+* `set_chain_id` で EIP-712 ドメインを切り替える。`set_rpc_endpoint` が RPC URL を管理する。
 
 ### 3.4 事前検証フロー
 
@@ -254,13 +254,13 @@ service : {
 ```bash
 dfx start --clean --enable-tecdsa
 dfx deploy relayer
-# Admin 設定投入: set_rpc_target / set_chain_id / set_ecdsa_derivation_path / set_relayer_address / add_asset / set_threshold / pause(false)
+# Admin 設定投入: set_rpc_endpoint / set_chain_id / set_ecdsa_derivation_path / set_relayer_address / add_asset / set_threshold / pause(false)
 # relayer の EVM アドレス表示APIを用意し MATIC (Amoy) を入金
 ```
 
 ### 4.2 ステージング（Polygon Amoy）
 
-* EVM RPC ネットワーク/JPYC を Amoy 用に投入（例: `set_rpc_target` で `polygon-amoy` 指定）
+* RPC エンドポイントを Amoy 用に設定（例: `set_rpc_endpoint` で `https://rpc-amoy.polygon.technology` を指定）
 * 少額で E2E（正常/失敗系）を一通り通す
 
 ### 4.3 本番（Polygon Mainnet）

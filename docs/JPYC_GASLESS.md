@@ -196,7 +196,7 @@ service : {
   info: () -> (record { relayer_addr: text; gas_wei: nat; threshold_wei: nat }) query;
   logs: (opt nat64, nat32) -> (vec record { ts: nat64; from: text; to: text; value: nat; tx: text; status: text }) query;
 
-  set_rpc_target: (principal, text) -> ();
+  set_rpc_endpoint: (text) -> ();
   set_threshold: (nat) -> ();
   set_chain_id: (nat) -> ();
   set_ecdsa_derivation_path: (vec blob) -> ();
@@ -209,12 +209,13 @@ service : {
 }
 ```
 
-### 3.3 EVM RPC キャニスター経由の呼び出し
+### 3.3 直接 HTTP outcall による RPC 呼び出し
 
-* `eth_call / eth_estimateGas / eth_sendRawTransaction` は EVM RPC キャニスターの `request` を利用。
-* `call_with_payment128` で十分な cycles を添付し、ネットワーク設定文字列に応じて適切な `RpcService` を組み立てたうえで JSON-RPC ペイロードを送信する（v0.5 以降は `RpcService::Chain` が廃止されたため注意）。
-* 応答は JSON 文字列。`error` フィールドが存在する場合は `RpcError` を組み立て、`result` をパースして利用する。
-* `set_chain_id` により EIP-712 ドメインと RPC 呼び出し先チェーンを切り替え、`set_rpc_target` は接続先キャニスターの記録に専念させる。
+* `eth_call / eth_estimateGas / eth_sendRawTransaction` は管理キャニスターの `http_request` を通じて、設定済み RPC エンドポイントへ JSON-RPC を POST する。
+* `set_rpc_endpoint` で `https://...` 形式の URL を登録。API キーは URL に組み込むか、必要に応じて今後ヘッダ対応を検討する。
+* リクエストには `Content-Type: application/json` と `Idempotency-Key` を付与し、`is_replicated = false` で単一レプリカ実行としている。
+* cycles は固定値（25_000_000_000）を添付し、`max_response_bytes` は 256KB に制限。レスポンスステータスが 200 以外の場合は `RpcTransportError` としてリレーを即中断する。
+* `set_chain_id` は EIP-712 ドメイン切り替えのみを担い、RPC URL は `set_rpc_endpoint` が単独で管理する。
 
 ### 3.4 事前検証フロー
 
@@ -245,13 +246,13 @@ service : {
 ```bash
 dfx start --clean --enable-tecdsa
 dfx deploy relayer
-# set_rpc_target / set_chain_id / set_ecdsa_derivation_path / derive_relayer_address / add_asset / set_threshold / pause(false)
+# set_rpc_endpoint / set_chain_id / set_ecdsa_derivation_path / derive_relayer_address / add_asset / set_threshold / pause(false)
 ```
 
 ### 4.2 ステージング（Polygon Amoy）
 
 * EVM RPC ネットワークを `polygon-amoy` に設定。
-  - 例: `dfx canister --network ic call relayer set_rpc_target '(principal "7hfb6-caaaa-aaaar-qadga-cai", "polygon-amoy")'`
+  - 例: `dfx canister --network ic call relayer set_rpc_endpoint '("https://rpc.ankr.com/polygon")'`
   - `polygon-amoy` / `polygon-mainnet` は内部で公式パブリック RPC URL（Amoy: `https://rpc-amoy.polygon.technology`, Mainnet: `https://polygon-rpc.com`）に解決される。
   - 独自 RPC を使う場合は `custom:https://example.com`、特定プロバイダ ID を指定する場合は `provider:<ID>` の形式を使う。
 * 少額で正常系/失敗系の E2E テストを実施。

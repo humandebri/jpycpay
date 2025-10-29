@@ -60,7 +60,7 @@ service : (opt InitArgs) -> {
   set_chain_id : (nat) -> ();
   set_ecdsa_derivation_path : (vec blob) -> ();
   set_relayer_address : (text) -> ();
-  set_rpc_target : (principal, text) -> ();
+  set_rpc_endpoint : (text) -> ();
   set_threshold : (nat) -> ();
   submit_authorization : (SubmitAuthorizationRequest) -> (Result_1);
 }

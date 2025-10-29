@@ -54,7 +54,7 @@ export default function OverviewPage() {
 
       <Section title="セキュリティ・ガバナンス">
         <List>
-          <li>管理者のみ `set_rpc_target` / `set_chain_id` 等の更新を許可 (`ensure_admin`)</li>
+          <li>管理者のみ `set_rpc_endpoint` / `set_chain_id` 等の更新を許可 (`ensure_admin`)</li>
           <li>Relayer 側で rate limit, daily cap を実装し過剰送信を抑制</li>
           <li>ログに失敗理由が記録され、誤署名や期限切れをトラブルシュート可能</li>
           <li>Relayer の秘密鍵は存在せず ICP の tECDSA により署名</li>

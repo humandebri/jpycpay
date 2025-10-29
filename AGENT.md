@@ -39,7 +39,7 @@ dfx deploy relayer
 デプロイ後の設定コマンド:
 
 ```bash
-dfx canister call relayer set_rpc_target '(principal "br5f7-7uaaa-aaaaa-qaaca-cai", "polygon-amoy")'
+dfx canister call relayer set_rpc_endpoint '("https://rpc-amoy.polygon.technology")'
 dfx canister call relayer set_chain_id '(80002)'
 dfx canister call relayer set_ecdsa_derivation_path '(vec { blob "\00\00\00\00" })'
 dfx canister call relayer set_relayer_address '("0xe1e5951f7d37c0124e9b7018a94ca637192f3576")'
@@ -96,7 +96,7 @@ dfx canister id jpyc_wrapper  # => be2us-64aaa-aaaaa-qaabq-cai
 ## 5. Polygon Mainnet 移行手順（予定）
 
 1. 設定内容を本番向けに置き換える:
-   - `set_rpc_target '(principal "br5f7-7uaaa-aaaaa-qaaca-cai", "polygon-mainnet")'`
+   - `set_rpc_endpoint '("https://polygon-rpc.com")'`
    - `set_chain_id '(137)'`
    - `set_relayer_address` は導出した Mainnet アドレスへ
 2. `threshold_wei` や rate-limit 値の最終調整。
@@ -143,4 +143,3 @@ dfx canister id jpyc_wrapper  # => be2us-64aaa-aaaaa-qaabq-cai
 ---
 
 必要に応じてこのメモにアップデートを追加してください。特に本番移行時のフローとウォレット運用は、明確な手順を維持することが重要です。
-
