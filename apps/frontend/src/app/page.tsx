@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   useAccount,
@@ -28,12 +28,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Spinner } from "@/components/ui/spinner";
 import Link from "next/link";
 import { clientEnv } from "@/lib/env";
 import { publicClient } from "@/lib/viem";
 import { ERC20_META_ABI } from "@/lib/abi/erc20Meta";
 
 interface InfoResponse {
+  relayer_canister_id: string;
   relayer_addr: string;
   threshold_wei: string;
   gas_wei: string;
@@ -67,6 +69,10 @@ export default function HomePage() {
   const [amount, setAmount] = useState("");
   const [lastResult, setLastResult] = useState<string | null>(null);
   const [lastError, setLastError] = useState<string | null>(null);
+  const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "failed">(
+    "idle",
+  );
+  const copyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const tokenMetaQuery = useQuery({
     queryKey: ["token-meta"],
@@ -139,7 +145,7 @@ export default function HomePage() {
         from: address as `0x${string}`,
         to: toAddress as `0x${string}`,
         value,
-        validAfter: 0n,
+        validAfter: BigInt(0),
         validBefore,
         nonce: nonceHex,
       } as const;
@@ -221,6 +227,29 @@ export default function HomePage() {
     clientEnv.NEXT_PUBLIC_CHAIN_ID === 137
       ? "https://polygonscan.com"
       : "https://amoy.polygonscan.com";
+  const tipAddress = "0x88F88c9667ECB746c11b8a0182f11F622FFbb844";
+  const logs = logsQuery.data?.logs ?? [];
+
+  const handleCopyTipAddress = async () => {
+    if (copyTimeoutRef.current) {
+      clearTimeout(copyTimeoutRef.current);
+    }
+    try {
+      await navigator.clipboard.writeText(tipAddress);
+      setCopyStatus("copied");
+    } catch {
+      setCopyStatus("failed");
+    }
+    copyTimeoutRef.current = setTimeout(() => setCopyStatus("idle"), 2000);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (copyTimeoutRef.current) {
+        clearTimeout(copyTimeoutRef.current);
+      }
+    };
+  }, []);
 
   return (
     <div className="min-h-screen bg-neutral-100 pb-16">
@@ -345,8 +374,44 @@ export default function HomePage() {
                     chainId !== clientEnv.NEXT_PUBLIC_CHAIN_ID
                   }
                 >
-                  {mutation.isPending ? "署名中…" : "署名してリレーへ送信"}
+                  {mutation.isPending ? (
+                    <>
+                      <Spinner className="mr-2 size-4" />
+                      署名中…
+                    </>
+                  ) : (
+                    "署名してリレーへ送信"
+                  )}
                 </Button>
+
+                <div className="rounded-2xl border border-dashed border-neutral-300 bg-neutral-50 px-4 py-4 text-xs text-neutral-600">
+                  <p >
+                    tECDSAのコストにより1回3.5円かかります😇
+                  </p>
+                  <p className="mb-3">
+                    もし気に入っていただけたらJPYCをカンパいただけると嬉しいです。
+                    下記アドレスをウォレットに貼り付けて送付してください。
+                  </p>
+                  <div className="flex flex-col gap-2">
+                    <div className="rounded-xl border border-neutral-200 bg-white px-3 py-2 font-mono text-[11px] text-neutral-700 break-all">
+                      {tipAddress}
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <Button size="sm" variant="secondary" onClick={handleCopyTipAddress}>
+                        アドレスをコピー
+                      </Button>
+                      {copyStatus === "copied" ? (
+                        <span className="text-[11px] text-emerald-600">
+                          コピーしました、ありがとうございます！
+                        </span>
+                      ) : copyStatus === "failed" ? (
+                        <span className="text-[11px] text-rose-600">
+                          コピーに失敗しました。手動でコピーしてください。
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
               </form>
 
               <div className="space-y-2 text-xs">
@@ -392,6 +457,12 @@ export default function HomePage() {
                       <span className="text-neutral-500">Relayer address</span>
                       <p className="font-mono text-xs text-neutral-700">
                         {infoQuery.data?.relayer_addr ?? "-"}
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-neutral-500">Relayer canister</span>
+                      <p className="font-mono text-xs text-neutral-700">
+                        {infoQuery.data?.relayer_canister_id ?? "-"}
                       </p>
                     </div>
                     <div className="flex items-center justify-between text-xs text-neutral-600">
@@ -447,10 +518,10 @@ export default function HomePage() {
                   <p className="text-neutral-500">読み込み中…</p>
                 ) : logsQuery.isError ? (
                   <p className="text-rose-500">ログの取得に失敗しました。</p>
-                ) : logsQuery.data.logs.length === 0 ? (
+                ) : logs.length === 0 ? (
                   <p className="text-neutral-500">まだログがありません。</p>
                 ) : (
-                  logsQuery.data.logs.map((entry) => (
+                  logs.map((entry) => (
                     <div
                       key={entry.id}
                       className="rounded-2xl border border-neutral-200 bg-neutral-50 p-4"
@@ -505,6 +576,7 @@ export default function HomePage() {
                 )}
               </CardContent>
             </Card>
+
           </div>
         </div>
       </div>

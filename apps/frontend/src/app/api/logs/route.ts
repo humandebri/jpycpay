@@ -8,7 +8,9 @@ export async function GET(request: Request) {
   const startAfterParam = searchParams.get("startAfter");
   const limitParam = searchParams.get("limit");
 
-  const startAfter = startAfterParam ? [BigInt(startAfterParam)] : [];
+  const startAfter: [] | [bigint] = startAfterParam
+    ? [BigInt(startAfterParam)]
+    : [];
   const limit = limitParam ? Number(limitParam) : 20;
 
   const actor = await getRelayerActor();

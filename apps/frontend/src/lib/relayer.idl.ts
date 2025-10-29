@@ -60,6 +60,7 @@ export interface InfoResponse {
   relayer_addr: string;
   threshold_wei: bigint;
   gas_wei: bigint;
+  cycles_balance: bigint;
 }
 
 export interface LogEntry {

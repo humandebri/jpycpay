@@ -1,13 +1,16 @@
 import { cookieStorage, createConfig, createStorage, http } from "wagmi";
 import { polygon, polygonAmoy } from "wagmi/chains";
 import { defineChain } from "viem";
+import type { Chain } from "viem";
 import { injected } from "@wagmi/connectors";
 import { clientEnv } from "@/lib/env";
 
 const knownChains = [polygon, polygonAmoy];
 const chainId = Number(clientEnv.NEXT_PUBLIC_CHAIN_ID);
 
-let resolvedChain = knownChains.find((chain) => chain.id === chainId);
+let resolvedChain: Chain | undefined = knownChains.find(
+  (chain) => chain.id === chainId,
+);
 
 if (!resolvedChain) {
   const rpcUrl = clientEnv.NEXT_PUBLIC_RPC_URL;
@@ -29,6 +32,13 @@ if (!resolvedChain) {
     rpcUrls: {
       default: { http: [rpcUrl] },
       public: { http: [rpcUrl] },
+    },
+    blockExplorers: {
+      default: {
+        name: "PolygonScan",
+        url: "https://polygonscan.com",
+        apiUrl: "https://api.polygonscan.com/api",
+      },
     },
   });
 }

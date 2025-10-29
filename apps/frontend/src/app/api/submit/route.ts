@@ -37,15 +37,15 @@ export async function POST(request: Request) {
 
   const result = await actor.submit_authorization({
     asset: Principal.fromText(payload.assetPrincipal),
-    from: hexToBytes(payload.from),
-    to: hexToBytes(payload.to),
+    from: hexToBytes(payload.from as `0x${string}`),
+    to: hexToBytes(payload.to as `0x${string}`),
     value: BigInt(payload.value),
     valid_after: BigInt(payload.validAfter ?? "0"),
     valid_before: BigInt(payload.validBefore),
-    nonce: hexToBytes(payload.nonce),
+    nonce: hexToBytes(payload.nonce as `0x${string}`),
     sig_v: payload.signature.v,
-    sig_r: hexToBytes(payload.signature.r),
-    sig_s: hexToBytes(payload.signature.s),
+    sig_r: hexToBytes(payload.signature.r as `0x${string}`),
+    sig_s: hexToBytes(payload.signature.s as `0x${string}`),
   });
 
   if ("Err" in result) {

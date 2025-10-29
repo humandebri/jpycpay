@@ -21,7 +21,7 @@ export async function getRelayerActor(): Promise<ActorSubclass<_SERVICE>> {
     }
   }
 
-  cachedActor = Actor.createActor<_SERVICE>(idlFactory, {
+  cachedActor = Actor.createActor<_SERVICE>(idlFactory as any, {
     agent,
     canisterId: Principal.fromText(RELAYER_CANISTER_ID),
   });
