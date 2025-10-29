@@ -1169,7 +1169,6 @@ fn scale_nat(value: &Nat, multiplier: f64) -> InternalResult<Nat> {
 }
 
 const JPYC_UNIT_MULTIPLIER: u128 = 1_000_000_000_000_000_000;
-const RPC_CALL_CYCLES: u128 = 2_000_000_000;
 const RPC_RESPONSE_MAX_BYTES: u64 = 64 * 1024;
 static JSON_RPC_ID: AtomicU64 = AtomicU64::new(1);
 
@@ -1794,9 +1793,9 @@ async fn rpc_request(_chain_id: u64, payload: Value) -> InternalResult<Value> {
         is_replicated: Some(false),
     };
 
-    let response: HttpRequestResult = Call::unbounded_wait(Principal::management_canister(), "http_request")
+    let call = Call::unbounded_wait(Principal::management_canister(), "http_request")
         .with_arg(&request)
-        .with_cycles(RPC_CALL_CYCLES)
+        .with_cycles(ic_cdk::management_canister::cost_http_request(&request))
         .await
         .map_err(|err| RelayError::RpcTransportError {
             code: format!("{:?}", err),
@@ -1807,6 +1806,7 @@ async fn rpc_request(_chain_id: u64, payload: Value) -> InternalResult<Value> {
             code: "CandidDecode".into(),
             message: err.to_string(),
         })?;
+    let response: HttpRequestResult = call;
 
     let status = response
         .status
