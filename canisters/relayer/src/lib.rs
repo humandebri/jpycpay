@@ -234,6 +234,7 @@ struct InfoResponse {
     relayer_addr: String,
     gas_wei: Nat,
     threshold_wei: Nat,
+    cycles_balance: Nat,
 }
 
 #[derive(Clone, Debug, CandidType, Deserialize)]
@@ -513,6 +514,7 @@ fn post_upgrade() {
 
 #[query]
 fn info() -> InfoResponse {
+    let cycles = ic_cdk::api::canister_balance128();
     state_ref(|state| InfoResponse {
         relayer_addr: state
             .config
@@ -521,6 +523,7 @@ fn info() -> InfoResponse {
             .unwrap_or_else(|| "".to_string()),
         gas_wei: state.last_known_gas.clone(),
         threshold_wei: state.config.threshold_wei.clone(),
+        cycles_balance: Nat::from(cycles),
     })
 }
 

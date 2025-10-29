@@ -1,4 +1,5 @@
 type InfoResponse = record {
+  cycles_balance : nat;
   relayer_addr : text;
   threshold_wei : nat;
   gas_wei : nat;

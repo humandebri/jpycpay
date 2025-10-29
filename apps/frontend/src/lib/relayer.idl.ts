@@ -7,6 +7,7 @@ export const idlFactory = ({ IDL }: { IDL: CandidIDL }) => {
     relayer_addr: IDL.Text,
     threshold_wei: IDL.Nat,
     gas_wei: IDL.Nat,
+    cycles_balance: IDL.Nat,
   });
 
   const LogEntry = IDL.Record({

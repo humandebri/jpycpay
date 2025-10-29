@@ -27,6 +27,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import Link from "next/link";
 import { clientEnv } from "@/lib/env";
 import { publicClient } from "@/lib/viem";
 import { ERC20_META_ABI } from "@/lib/abi/erc20Meta";
@@ -35,6 +36,7 @@ interface InfoResponse {
   relayer_addr: string;
   threshold_wei: string;
   gas_wei: string;
+  cycles_balance: string;
 }
 
 interface LogsResponseItem {
@@ -68,30 +70,15 @@ export default function HomePage() {
   const tokenMetaQuery = useQuery({
     queryKey: ["token-meta"],
     queryFn: async () => {
-      const address = clientEnv.NEXT_PUBLIC_JPYC_ADDRESS as `0x${string}`;
-      const [name, version, decimals] = await Promise.all([
-        publicClient.readContract({
-          address,
-          abi: ERC20_META_ABI,
-          functionName: "name",
-        }),
-        publicClient.readContract({
-          address,
-          abi: ERC20_META_ABI,
-          functionName: "version",
-        }),
-        publicClient.readContract({
-          address,
-          abi: ERC20_META_ABI,
-          functionName: "decimals",
-        }),
-      ]);
-
-      return {
-        name: String(name),
-        version: String(version),
-        decimals: Number(decimals),
-      };
+      const res = await fetch("/api/token-meta", { cache: "no-cache" });
+      if (!res.ok) {
+        throw new Error("Failed to fetch token metadata");
+      }
+      return res.json() as Promise<{
+        name: string;
+        version: string;
+        decimals: number;
+      }>;
     },
     staleTime: Infinity,
   });
@@ -215,6 +202,9 @@ export default function HomePage() {
   const threshold = infoQuery.data
     ? formatEther(BigInt(infoQuery.data.threshold_wei))
     : null;
+  const cyclesBalance = infoQuery.data
+    ? Number(infoQuery.data.cycles_balance) / 1_000_000_000_000
+    : null;
   const explorerBase =
     clientEnv.NEXT_PUBLIC_CHAIN_ID === 137
       ? "https://polygonscan.com"
@@ -223,7 +213,7 @@ export default function HomePage() {
   return (
     <div className="min-h-screen bg-neutral-100 pb-16">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-5 pt-12 lg:px-8">
-        <header className="space-y-2">
+        <header className="space-y-4">
           <Badge variant="secondary" className="uppercase tracking-wide">
             JPYC Gasless Relay
           </Badge>
@@ -234,6 +224,14 @@ export default function HomePage() {
             Polygon Amoy 上の JPYC を EIP-3009 署名のみで転送。ICP リレーが
             ガス支払いとブロードキャストを代行します。
           </p>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+            <Button asChild variant="outline" size="sm">
+              <Link href="/docs/overview">仕組みを詳しく知る</Link>
+            </Button>
+            <Button asChild variant="ghost" size="sm">
+              <Link href="/docs/comparison">他方式との比較を見る</Link>
+            </Button>
+          </div>
         </header>
 
         <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
@@ -325,12 +323,6 @@ export default function HomePage() {
                   />
                 </div>
 
-                {clientEnv.NEXT_PUBLIC_RELAYER_ADDRESS ? (
-                  <p className="rounded-xl border border-neutral-200 bg-neutral-100 px-4 py-3 text-xs text-neutral-600">
-                    リレーアドレス (EVM): {clientEnv.NEXT_PUBLIC_RELAYER_ADDRESS}
-                  </p>
-                ) : null}
-
                 <Button
                   type="submit"
                   className="w-full"
@@ -391,20 +383,28 @@ export default function HomePage() {
                         {infoQuery.data?.relayer_addr ?? "-"}
                       </p>
                     </div>
-                    <div className="flex items-center justify-between text-xs text-neutral-600">
-                      <span>Gas balance</span>
-                      <span className="font-medium text-neutral-900">
-                        {gasBalance ?? "-"} MATIC
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between text-xs text-neutral-600">
-                      <span>Threshold</span>
-                      <span className="font-medium text-neutral-900">
-                        {threshold ?? "-"} MATIC
-                      </span>
-                    </div>
-                  </>
-                )}
+                <div className="flex items-center justify-between text-xs text-neutral-600">
+                  <span>Gas balance</span>
+                  <span className="font-medium text-neutral-900">
+                    {gasBalance ?? "-"} MATIC
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-xs text-neutral-600">
+                  <span>Threshold</span>
+                  <span className="font-medium text-neutral-900">
+                    {threshold ?? "-"} MATIC
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-xs text-neutral-600">
+                  <span>Cycles balance</span>
+                  <span className="font-medium text-neutral-900">
+                    {cyclesBalance !== null
+                      ? `${cyclesBalance.toLocaleString()} TC`
+                      : "-"}
+                  </span>
+                </div>
+              </>
+            )}
               </CardContent>
             </Card>
 
