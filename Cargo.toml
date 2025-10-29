@@ -1,3 +1,11 @@
 [workspace]
 members = ["canisters/relayer"]
 resolver = "2"
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = "z"
+panic = "abort"
+strip = "symbols"
+debug = false

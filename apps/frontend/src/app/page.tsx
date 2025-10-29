@@ -15,6 +15,7 @@ import {
   parseUnits,
   hexToBytes,
   bytesToHex,
+  type TypedDataDomain,
 } from "viem";
 import {
   Card,
@@ -76,7 +77,6 @@ export default function HomePage() {
       }
       return res.json() as Promise<{
         name: string;
-        version: string;
         decimals: number;
       }>;
     },
@@ -126,7 +126,7 @@ export default function HomePage() {
         throw new Error("トークン情報の取得を待っています");
       }
 
-      const { name, version, decimals } = tokenMetaQuery.data;
+      const { name, decimals } = tokenMetaQuery.data;
       const value = parseUnits(amount, decimals);
       const now = Math.floor(Date.now() / 1000);
       const validBefore = BigInt(
@@ -144,14 +144,16 @@ export default function HomePage() {
         nonce: nonceHex,
       } as const;
 
+      const domain: TypedDataDomain = {
+        name,
+        chainId: BigInt(clientEnv.NEXT_PUBLIC_CHAIN_ID),
+        verifyingContract: clientEnv.NEXT_PUBLIC_JPYC_ADDRESS as `0x${string}`,
+      };
+      domain.version = "1";
+
       const signature = await walletClient.signTypedData({
         account: address,
-        domain: {
-          name,
-          version,
-          chainId: BigInt(clientEnv.NEXT_PUBLIC_CHAIN_ID),
-          verifyingContract: clientEnv.NEXT_PUBLIC_JPYC_ADDRESS as `0x${string}`,
-        },
+        domain,
         primaryType: "TransferWithAuthorization",
         types: {
           TransferWithAuthorization: [

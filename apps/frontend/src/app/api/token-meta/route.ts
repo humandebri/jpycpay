@@ -31,16 +31,13 @@ export async function GET() {
 
     return NextResponse.json({
       name: String(name),
-      version: "2",
       decimals: Number(decimals),
     });
   } catch (error) {
     console.error("Failed to fetch token metadata", error);
-    return NextResponse.json({
-      name: "JPYC",
-      version: "2",
-      decimals: 18,
-      warning: "Using fallback token metadata",
-    });
+    return NextResponse.json(
+      { error: "Failed to fetch token metadata" },
+      { status: 500 },
+    );
   }
 }

@@ -5,6 +5,7 @@
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
+use std::convert::TryFrom;
 
 use candid::{CandidType, Nat, Principal};
 use ic_cdk::api::call::call_with_payment128;
@@ -12,10 +13,12 @@ use ic_cdk::api::caller;
 use ic_cdk::api::management_canister::ecdsa::{
     sign_with_ecdsa, EcdsaCurve, EcdsaKeyId, SignWithEcdsaArgument, SignWithEcdsaResponse,
 };
+use ic_cdk::api::stable::stable64_size;
 use ic_cdk::api::time;
 use ic_cdk::storage::{stable_restore, stable_save};
 use ic_cdk::trap;
 use ic_cdk_macros::{init, post_upgrade, pre_upgrade, query, update};
+use k256::ecdsa::{RecoveryId, Signature as K256Signature, VerifyingKey};
 use num_bigint::BigUint;
 use num_traits::ToPrimitive;
 use serde::{Deserialize, Serialize};
@@ -23,6 +26,8 @@ use serde_json::{json, Value};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 type InternalResult<T> = std::result::Result<T, RelayError>;
+
+const WASM_PAGE_BYTES: u64 = 65_536;
 
 thread_local! {
     static STATE: RefCell<Option<RelayerState>> = RefCell::new(None);
@@ -299,6 +304,9 @@ enum RelayError {
         expected: usize,
         actual: usize,
     },
+    SignatureRecoveryFailed {
+        message: String,
+    },
     RpcError {
         code: i64,
         message: String,
@@ -380,6 +388,9 @@ impl std::fmt::Display for RelayError {
                 "invalid {} length: expected {}, got {}",
                 field, expected, actual
             ),
+            RelayError::SignatureRecoveryFailed { message } => {
+                write!(f, "signature recovery failed: {}", message)
+            }
             RelayError::RpcError { code, message } => write!(f, "rpc error {}: {}", code, message),
             RelayError::RpcTransportError { code, message } => {
                 write!(f, "rpc transport error {}: {}", code, message)
@@ -507,15 +518,40 @@ fn init(args: Option<InitArgs>) {
 #[pre_upgrade]
 fn pre_upgrade() {
     let snapshot = STATE.with(|cell| cell.borrow().clone());
+    let stable_pages_before = stable64_size();
     if let Err(e) = stable_save((snapshot,)) {
         trap(&format!("failed to save state: {}", e));
     }
+    let stable_pages_after = stable64_size();
+    let written_pages = stable_pages_after.saturating_sub(stable_pages_before);
+    let written_bytes = written_pages * WASM_PAGE_BYTES;
+    ic_cdk::println!(
+        "[relayer] pre_upgrade: stable_pages_before={}, stable_pages_after={}, written_bytes~{}",
+        stable_pages_before,
+        stable_pages_after,
+        written_bytes
+    );
 }
 
 #[post_upgrade]
 fn post_upgrade() {
+    let stable_pages_before = stable64_size();
     let (snapshot,): (Option<RelayerState>,) =
         stable_restore().unwrap_or_else(|e| trap(&format!("failed to restore state: {}", e)));
+    let stable_pages_after = stable64_size();
+    ic_cdk::println!(
+        "[relayer] post_upgrade: stable_pages_before={}, stable_pages_after={}, restored_logs={}, restored_assets={}",
+        stable_pages_before,
+        stable_pages_after,
+        snapshot
+            .as_ref()
+            .map(|state| state.logs.len())
+            .unwrap_or(0),
+        snapshot
+            .as_ref()
+            .map(|state| state.assets.len())
+            .unwrap_or(0)
+    );
     STATE.with(|cell| {
         *cell.borrow_mut() = Some(snapshot.unwrap_or_default());
     });
@@ -797,6 +833,14 @@ async fn submit_authorization_internal(req: SubmitAuthorizationRequest) -> Inter
         RelayError::RelayerAddressMissing
     })?;
 
+    let relayer_addr_bytes = match evm_address_bytes(&relayer_addr) {
+        Ok(bytes) => bytes,
+        Err(err) => {
+            mark_log_failure(log_id, &err.to_string());
+            return Err(err);
+        }
+    };
+
     let chain_id_nat = match chain_id_opt {
         Some(ref id) => id.clone(),
         None => {
@@ -992,7 +1036,13 @@ async fn submit_authorization_internal(req: SubmitAuthorizationRequest) -> Inter
     signing_payload.extend_from_slice(&unsigned_rlp);
     let sighash = keccak256(&signing_payload);
 
-    let signature = match sign_prehashed_message(&ecdsa_key_name, &derivation_path, &sighash).await
+    let signature = match sign_prehashed_message(
+        &ecdsa_key_name,
+        &derivation_path,
+        &sighash,
+        &relayer_addr_bytes,
+    )
+    .await
     {
         Ok(sig) => sig,
         Err(err) => {
@@ -1510,14 +1560,9 @@ fn evm_address_bytes(address: &str) -> InternalResult<[u8; 20]> {
 async fn sign_prehashed_message(
     key_name: &str,
     derivation_path: &[Vec<u8>],
-    message_hash: &[u8],
+    message_hash: &[u8; 32],
+    expected_address: &[u8; 20],
 ) -> InternalResult<SignatureParts> {
-    if message_hash.len() != 32 {
-        return Err(RelayError::NotImplemented {
-            feature: "non-32-byte hash signing".into(),
-        });
-    }
-
     let arg = SignWithEcdsaArgument {
         message_hash: message_hash.to_vec(),
         derivation_path: derivation_path.to_vec(),
@@ -1534,26 +1579,75 @@ async fn sign_prehashed_message(
                 code: format!("{:?}", code),
                 message,
             })?;
-    if signature.len() != 65 {
-        return Err(RelayError::RpcResultTypeMismatch {
-            expected: "65-byte secp256k1 signature",
-        });
-    }
+    let (r_bytes, s_bytes, y_parity) = match signature.len() {
+        65 => (
+            signature[0..32].to_vec(),
+            signature[32..64].to_vec(),
+            signature[64],
+        ),
+        64 => {
+            let mut rs = [0u8; 64];
+            rs.copy_from_slice(&signature);
+            let y = derive_y_parity(message_hash, &rs, expected_address)?;
+            (rs[0..32].to_vec(), rs[32..64].to_vec(), y)
+        }
+        actual => {
+            return Err(RelayError::InvalidSignatureLength {
+                field: "signature".into(),
+                expected: 64,
+                actual,
+            });
+        }
+    };
 
-    let r_raw = &signature[0..32];
-    let s_raw = &signature[32..64];
-    let y_parity = signature[64];
-
-    let mut r = trim_leading_zeroes(r_raw);
+    let mut r = trim_leading_zeroes(&r_bytes);
     if r.is_empty() {
         r.push(0);
     }
-    let mut s = trim_leading_zeroes(s_raw);
+    let mut s = trim_leading_zeroes(&s_bytes);
     if s.is_empty() {
         s.push(0);
     }
 
     Ok(SignatureParts { y_parity, r, s })
+}
+
+fn derive_y_parity(
+    message_hash: &[u8; 32],
+    signature_rs: &[u8; 64],
+    expected_address: &[u8; 20],
+) -> InternalResult<u8> {
+    let sig = K256Signature::try_from(signature_rs.as_slice()).map_err(|err| {
+        RelayError::SignatureRecoveryFailed {
+            message: format!("invalid signature bytes: {}", err),
+        }
+    })?;
+
+    for recovery_byte in 0u8..=3u8 {
+        let recovery_id = RecoveryId::try_from(recovery_byte).map_err(|err| {
+            RelayError::SignatureRecoveryFailed {
+                message: format!("invalid recovery id candidate {}: {}", recovery_byte, err),
+            }
+        })?;
+
+        if let Ok(verifying_key) =
+            VerifyingKey::recover_from_prehash(message_hash, &sig, recovery_id)
+        {
+            let encoded = verifying_key.to_encoded_point(false);
+            let pubkey_bytes = encoded.as_bytes();
+            if pubkey_bytes.len() != 65 {
+                continue;
+            }
+            let hashed = keccak256(&pubkey_bytes[1..]);
+            if &hashed[12..] == expected_address.as_ref() {
+                return Ok(u8::from(recovery_id.is_y_odd()));
+            }
+        }
+    }
+
+    Err(RelayError::SignatureRecoveryFailed {
+        message: "no recovery id produced expected relayer address".into(),
+    })
 }
 
 async fn ensure_authorization_unused(
