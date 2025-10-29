@@ -41,6 +41,7 @@ export const idlFactory = ({ IDL }: { IDL: CandidIDL }) => {
     add_asset: IDL.Func([IDL.Principal, IDL.Text, IDL.Nat], [], []),
     deprecate_asset: IDL.Func([IDL.Principal], [], []),
     disable_asset: IDL.Func([IDL.Principal], [], []),
+    derive_relayer_address: IDL.Func([], [Result_1], []),
     get_relayer_address: IDL.Func([], [IDL.Opt(IDL.Text)], ["query"]),
     info: IDL.Func([], [InfoResponse], ["query"]),
     logs: IDL.Func([IDL.Opt(IDL.Nat64), IDL.Nat32], [IDL.Vec(LogEntry)], ["query"]),
@@ -104,6 +105,7 @@ export interface _SERVICE {
   add_asset: (arg_0: Principal, arg_1: string, arg_2: bigint) => Promise<void>;
   deprecate_asset: (arg_0: Principal) => Promise<void>;
   disable_asset: (arg_0: Principal) => Promise<void>;
+  derive_relayer_address: () => Promise<Result_1>;
   get_relayer_address: () => Promise<[] | [string]>;
   info: () => Promise<InfoResponse>;
   logs: (arg_0: [] | [bigint], arg_1: number) => Promise<Array<LogEntry>>;

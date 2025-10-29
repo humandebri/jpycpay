@@ -51,6 +51,7 @@ service : (opt InitArgs) -> {
   add_asset : (principal, text, nat) -> ();
   deprecate_asset : (principal) -> ();
   disable_asset : (principal) -> ();
+  derive_relayer_address : () -> (Result_1);
   get_relayer_address : () -> (opt text) query;
   info : () -> (InfoResponse) query;
   logs : (opt nat64, nat32) -> (vec LogEntry) query;

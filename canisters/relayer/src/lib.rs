@@ -11,7 +11,8 @@ use candid::{CandidType, Nat, Principal};
 use ic_cdk::api::call::call_with_payment128;
 use ic_cdk::api::caller;
 use ic_cdk::api::management_canister::ecdsa::{
-    sign_with_ecdsa, EcdsaCurve, EcdsaKeyId, SignWithEcdsaArgument, SignWithEcdsaResponse,
+    ecdsa_public_key, sign_with_ecdsa, EcdsaCurve, EcdsaKeyId, EcdsaPublicKeyArgument,
+    EcdsaPublicKeyResponse, SignWithEcdsaArgument, SignWithEcdsaResponse,
 };
 use ic_cdk::api::stable::stable64_size;
 use ic_cdk::api::time;
@@ -664,6 +665,44 @@ fn get_relayer_address() -> Option<String> {
 }
 
 #[update]
+async fn derive_relayer_address() -> Result<String, String> {
+    if let Err(err) = ensure_admin() {
+        return Err(err.to_string());
+    }
+    let (key_name, derivation_path) = state_ref(|state| {
+        (
+            state.config.ecdsa_key_name.clone(),
+            state.config.ecdsa_derivation_path.clone(),
+        )
+    });
+    let arg = EcdsaPublicKeyArgument {
+        canister_id: Some(ic_cdk::id()),
+        derivation_path: derivation_path.clone(),
+        key_id: EcdsaKeyId {
+            curve: EcdsaCurve::Secp256k1,
+            name: key_name,
+        },
+    };
+    let (EcdsaPublicKeyResponse { public_key, .. },) =
+        ecdsa_public_key(arg)
+            .await
+            .map_err(|(code, message)| format!("ecdsa_public_key failed {:?}: {}", code, message))?;
+    let verifying_key = VerifyingKey::from_sec1_bytes(&public_key)
+        .map_err(|err| format!("invalid public key bytes: {}", err))?;
+    let encoded = verifying_key.to_encoded_point(false);
+    let pubkey_bytes = encoded.as_bytes();
+    if pubkey_bytes.len() != 65 {
+        return Err("unexpected uncompressed public key length".into());
+    }
+    let hash = keccak256(&pubkey_bytes[1..]);
+    let mut addr = [0u8; 20];
+    addr.copy_from_slice(&hash[12..]);
+    let address = format!("0x{}", hex::encode(addr));
+    state_mut(|state| state.config.evm_addr = Some(address.clone()));
+    Ok(address)
+}
+
+#[update]
 async fn refresh_gas_balance() -> Result<Nat, String> {
     let (address_opt, chain_id_opt) =
         state_ref(|state| (state.config.evm_addr.clone(), state.config.chain_id.clone()));
@@ -1240,7 +1279,7 @@ fn scale_nat(value: &Nat, multiplier: f64) -> InternalResult<Nat> {
 }
 
 const JPYC_UNIT_MULTIPLIER: u128 = 1_000_000_000_000_000_000;
-const RPC_CALL_CYCLES: u128 = 2_000_000_000_000;
+const RPC_CALL_CYCLES: u128 = 25_000_000_000;
 const RPC_RESPONSE_ESTIMATE: u64 = 64 * 1024;
 static JSON_RPC_ID: AtomicU64 = AtomicU64::new(1);
 

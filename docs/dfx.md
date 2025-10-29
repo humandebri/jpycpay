@@ -32,6 +32,22 @@ dfx canister --network ic install evkq6-tyaaa-aaaar-qbxza-cai --no-wallet \
   --wasm target/wasm32-unknown-unknown/release/relayer.wasm
 
 
+初期設定コマンド例:
+
+```
+CID=evkq6-tyaaa-aaaar-qbxza-cai
+
+dfx canister --network ic call $CID set_rpc_target '(principal "7hfb6-caaaa-aaaar-qadga-cai", "polygon-mainnet")'
+dfx canister --network ic call $CID set_chain_id '(137 : nat)'
+dfx canister --network ic call $CID set_ecdsa_derivation_path '(vec { blob "\00\00\00\00" })'
+dfx canister --network ic call $CID derive_relayer_address '()'
+dfx canister --network ic call $CID set_threshold '(100000000000000000 : nat)'
+dfx canister --network ic call $CID add_asset '(principal "be2us-64aaa-aaaaa-qaabq-cai", "0xE7C3D8C9a439feDe00D2600032D5dB0Be71C3c29", 0)'
+dfx canister --network ic call $CID refresh_gas_balance '()'
+dfx canister --network ic call $CID pause '(false)'
+```
+
+
 ⚠️ --specified-id は 本番 IC ネットワーク では無視される場合がある。
 その場合は 「create-canister 時に得た ID 」を dfx.json に 書いておく ほうが 安定。
 
@@ -80,5 +96,6 @@ ICP 残高 確認	dfx ledger --network ic balance
 Cycles 残高 確認	dfx cycles balance --network ic
 Canister 作成	dfx ledger --network ic create-canister "$(dfx identity get-principal)" --amount 1 --subnet-type fiduciary
 Cycles 補給	dfx ledger --network ic top-up <CANISTER_ID> --amount 1
+リレーアドレス同期	dfx canister --network ic call <CANISTER_ID> derive_relayer_address '()'
 デプロイ	dfx canister --network ic install <CANISTER_ID> --no-wallet --wasm target/wasm32-unknown-unknown/release/relayer.wasm
 状態 確認	dfx canister --network ic status <CANISTER_ID>

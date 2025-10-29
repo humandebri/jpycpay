@@ -201,6 +201,7 @@ service : {
   set_chain_id: (nat) -> ();
   set_ecdsa_derivation_path: (vec blob) -> ();
   set_relayer_address: (text) -> ();
+  derive_relayer_address: () -> (variant { Ok : text; Err : text });
   add_asset: (principal, text, nat) -> ();
   deprecate_asset: (principal) -> ();
   disable_asset: (principal) -> ();
@@ -244,7 +245,7 @@ service : {
 ```bash
 dfx start --clean --enable-tecdsa
 dfx deploy relayer
-# set_rpc_target / set_chain_id / set_ecdsa_derivation_path / set_relayer_address / add_asset / set_threshold / pause(false)
+# set_rpc_target / set_chain_id / set_ecdsa_derivation_path / derive_relayer_address / add_asset / set_threshold / pause(false)
 ```
 
 ### 4.2 ステージング（Polygon Amoy）
