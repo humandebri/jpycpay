@@ -93,6 +93,16 @@ export default function HomePage() {
     refetchInterval: 15_000,
   });
 
+  const gasBalanceQuery = useQuery({
+    queryKey: ["relayer-gas"],
+    queryFn: async (): Promise<{ gas_wei: string }> => {
+      const res = await fetch("/api/gas-balance", { cache: "no-cache" });
+      if (!res.ok) throw new Error("Failed to fetch relayer gas balance");
+      return res.json();
+    },
+    refetchInterval: 15_000,
+  });
+
   const logsQuery = useQuery({
     queryKey: ["relayer-logs"],
     queryFn: async (): Promise<{ logs: LogsResponseItem[] }> => {
@@ -196,14 +206,14 @@ export default function HomePage() {
   });
 
   const connector = connectors[0];
-  const gasBalance = infoQuery.data
-    ? formatEther(BigInt(infoQuery.data.gas_wei))
+  const gasBalance = gasBalanceQuery.data
+    ? formatEther(BigInt(gasBalanceQuery.data.gas_wei))
     : null;
   const threshold = infoQuery.data
     ? formatEther(BigInt(infoQuery.data.threshold_wei))
     : null;
   const cyclesBalance = infoQuery.data
-    ? Number(infoQuery.data.cycles_balance) / 1_000_000_000_000
+    ? BigInt(infoQuery.data.cycles_balance)
     : null;
   const explorerBase =
     clientEnv.NEXT_PUBLIC_CHAIN_ID === 137
@@ -220,9 +230,8 @@ export default function HomePage() {
           <h1 className="text-3xl font-semibold text-neutral-900">
             ガスレス送金オーソライズ
           </h1>
-          <p className="max-w-2xl text-sm text-neutral-600">
-            Polygon Amoy 上の JPYC を EIP-3009 署名のみで転送。ICP リレーが
-            ガス支払いとブロードキャストを代行します。
+          <p className="text-sm text-neutral-600">
+            Polygon Mainnet 上の JPYC を EIP-3009 署名のみで転送。ICP リレーがガス支払い（POL）とブロードキャストを代行します。
           </p>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
             <Button asChild variant="outline" size="sm">
@@ -371,9 +380,9 @@ export default function HomePage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="grid gap-4 text-sm">
-                {infoQuery.isLoading ? (
+                {infoQuery.isLoading || gasBalanceQuery.isLoading ? (
                   <p className="text-neutral-500">読み込み中…</p>
-                ) : infoQuery.isError ? (
+                ) : infoQuery.isError || gasBalanceQuery.isError ? (
                   <p className="text-rose-500">情報の取得に失敗しました。</p>
                 ) : (
                   <>
@@ -383,26 +392,42 @@ export default function HomePage() {
                         {infoQuery.data?.relayer_addr ?? "-"}
                       </p>
                     </div>
-                <div className="flex items-center justify-between text-xs text-neutral-600">
-                  <span>Gas balance</span>
-                  <span className="font-medium text-neutral-900">
-                    {gasBalance ?? "-"} MATIC
-                  </span>
-                </div>
+                    <div className="flex items-center justify-between text-xs text-neutral-600">
+                      <span>Gas balance</span>
+                      <span className="font-medium text-neutral-900">
+                        {gasBalance ?? "-"} POL
+                      </span>
+                    </div>
                 <div className="flex items-center justify-between text-xs text-neutral-600">
                   <span>Threshold</span>
                   <span className="font-medium text-neutral-900">
                     {threshold ?? "-"} MATIC
                   </span>
                 </div>
-                <div className="flex items-center justify-between text-xs text-neutral-600">
-                  <span>Cycles balance</span>
-                  <span className="font-medium text-neutral-900">
-                    {cyclesBalance !== null
-                      ? `${cyclesBalance.toLocaleString()} TC`
-                      : "-"}
-                  </span>
-                </div>
+                    <div className="flex items-center justify-between text-xs text-neutral-600">
+                      <span>Cycles balance</span>
+                      <span className="font-medium text-neutral-900 text-right">
+                        {cyclesBalance !== null ? (
+                          <>
+                            <span className="block text-[10px] text-neutral-500">
+                              {cyclesBalance.toLocaleString("en-US")}
+                            </span>
+                            <span className="block">
+                              {(Number(cyclesBalance) / 1_000_000_000_000).toLocaleString(
+                                "en-US",
+                                {
+                                  minimumFractionDigits: 3,
+                                  maximumFractionDigits: 3,
+                                },
+                              )}{" "}
+                              TC
+                            </span>
+                          </>
+                        ) : (
+                          "-"
+                        )}
+                      </span>
+                    </div>
               </>
             )}
               </CardContent>

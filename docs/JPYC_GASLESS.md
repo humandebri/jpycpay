@@ -1,6 +1,6 @@
 # Polygon JPYC ガスレス送金（EIP-3009）× ICP リレー 実装設計
 
-> 目的：**ユーザーは MetaMask 等で EIP-3009 署名のみ**。**ICPキャニスター（財務/リレー）が Polygon へ EIP-1559 Tx を送信**し、MATIC ガスはリレーが負担。  
+> 目的：**ユーザーは MetaMask 等で EIP-3009 署名のみ**。**ICPキャニスター（財務/リレー）が Polygon へ EIP-1559 Tx を送信**し、POL ガスはリレーが負担。  
 > スコープ：Polygon Mainnet / Polygon Amoy、JPYC（FiatTokenV1 プロキシ）。II は任意（ログイン用途のみ）。
 
 ---
@@ -13,7 +13,7 @@
       JSON(署名+ペイロード)
                                 [ICP Relayer Canister]
                                 ├─ 事前検証: authorizationState/validBefore
-                                ├─ 手数料/残高チェック(MATIC 残高)
+                                ├─ 手数料/残高チェック(POL 残高)
                                 ├─ EIP-1559 Tx 組立 + tECDSA署名
                                 └─ sendRawTransaction ▶ Polygon RPC
                                                        └─ TxHash → Polygonscan
@@ -39,7 +39,7 @@ RELAYER_EVM_RPC_CANISTER=br5f7-7uaaa-aaaaa-qaaca-cai
 RELAYER_EVM_RPC_NETWORK=polygon-mainnet
 RELAYER_CHAIN_ID=137
 RELAYER_JPYC_ADDRESS=0xE7C3D8C9a439feDe00D2600032D5dB0Be71C3c29
-RELAYER_GAS_THRESHOLD_WEI=20000000000000000 # 0.02 MATIC 目安（適宜調整）
+RELAYER_GAS_THRESHOLD_WEI=20000000000000000 # 0.02 POL 目安（適宜調整）
 RELAYER_MAX_FEE_MULTIPLIER=2.0
 RELAYER_PRIORITY_MULTIPLIER=1.2
 RELAYER_ECDSA_DERIVATION_PATH=["<32byte index>"]
@@ -321,7 +321,7 @@ dfx deploy relayer
 
 * 署名モーダル: ガスレス説明、15分の有効期限  
 * 完了: 手数料 0、Polygonscan リンク  
-* ガス枯渇: 管理者の MATIC 補充待ち
+* ガス枯渇: 管理者の POL 補充待ち
 
 ---
 

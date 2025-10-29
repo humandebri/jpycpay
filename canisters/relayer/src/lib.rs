@@ -235,6 +235,7 @@ struct InfoResponse {
     gas_wei: Nat,
     threshold_wei: Nat,
     cycles_balance: Nat,
+    assets: Vec<AssetInfo>,
 }
 
 #[derive(Clone, Debug, CandidType, Deserialize)]
@@ -261,6 +262,14 @@ struct LogEntry {
     tx: Option<String>,
     status: String,
     fail_reason: Option<String>,
+}
+
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+struct AssetInfo {
+    asset: Principal,
+    evm_address: String,
+    status: AssetStatus,
+    fee_bps: u16,
 }
 
 #[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
@@ -524,6 +533,16 @@ fn info() -> InfoResponse {
         gas_wei: state.last_known_gas.clone(),
         threshold_wei: state.config.threshold_wei.clone(),
         cycles_balance: Nat::from(cycles),
+        assets: state
+            .assets
+            .iter()
+            .map(|(principal, cfg)| AssetInfo {
+                asset: principal.clone(),
+                evm_address: cfg.evm_address.clone(),
+                status: cfg.status.clone(),
+                fee_bps: cfg.fee_bps,
+            })
+            .collect(),
     })
 }
 

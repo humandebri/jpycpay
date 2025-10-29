@@ -4,7 +4,7 @@ import { defineChain } from "viem";
 import { injected } from "@wagmi/connectors";
 import { clientEnv } from "@/lib/env";
 
-const knownChains = [polygonAmoy, polygon];
+const knownChains = [polygon, polygonAmoy];
 const chainId = Number(clientEnv.NEXT_PUBLIC_CHAIN_ID);
 
 let resolvedChain = knownChains.find((chain) => chain.id === chainId);
@@ -22,8 +22,8 @@ if (!resolvedChain) {
     name: `Chain ${chainId}`,
     network: `chain-${chainId}`,
     nativeCurrency: {
-      name: "Ether",
-      symbol: "ETH",
+      name: "POL",
+      symbol: "POL",
       decimals: 18,
     },
     rpcUrls: {

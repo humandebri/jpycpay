@@ -1,32 +1,46 @@
 import { NextResponse } from "next/server";
-import { clientEnv } from "@/lib/env";
+import { clientEnv, getServerEnv } from "@/lib/env";
 import { publicClient } from "@/lib/viem";
 import { ERC20_META_ABI } from "@/lib/abi/erc20Meta";
+import { appChain } from "@/lib/wagmi";
+import { createPublicClient, http } from "viem";
 
 export async function GET() {
   const address = clientEnv.NEXT_PUBLIC_JPYC_ADDRESS as `0x${string}`;
+  const serverEnv = getServerEnv();
+  const rpcClient = serverEnv.SERVER_RPC_URL
+    ? createPublicClient({
+        chain: appChain,
+        transport: http(serverEnv.SERVER_RPC_URL),
+      })
+    : publicClient;
 
-  const [name, version, decimals] = await Promise.all([
-    publicClient.readContract({
-      address,
-      abi: ERC20_META_ABI,
-      functionName: "name",
-    }),
-    publicClient.readContract({
-      address,
-      abi: ERC20_META_ABI,
-      functionName: "version",
-    }),
-    publicClient.readContract({
-      address,
-      abi: ERC20_META_ABI,
-      functionName: "decimals",
-    }),
-  ]);
+  try {
+    const [name, decimals] = await Promise.all([
+      rpcClient.readContract({
+        address,
+        abi: ERC20_META_ABI,
+        functionName: "name",
+      }),
+      rpcClient.readContract({
+        address,
+        abi: ERC20_META_ABI,
+        functionName: "decimals",
+      }),
+    ]);
 
-  return NextResponse.json({
-    name: String(name),
-    version: String(version),
-    decimals: Number(decimals),
-  });
+    return NextResponse.json({
+      name: String(name),
+      version: "2",
+      decimals: Number(decimals),
+    });
+  } catch (error) {
+    console.error("Failed to fetch token metadata", error);
+    return NextResponse.json({
+      name: "JPYC",
+      version: "2",
+      decimals: 18,
+      warning: "Using fallback token metadata",
+    });
+  }
 }

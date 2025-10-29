@@ -1,6 +1,14 @@
+type AssetInfo = record {
+  status : AssetStatus;
+  evm_address : text;
+  asset : principal;
+  fee_bps : nat16;
+};
+type AssetStatus = variant { Active; Disabled; Deprecated };
 type InfoResponse = record {
   cycles_balance : nat;
   relayer_addr : text;
+  assets : vec AssetInfo;
   threshold_wei : nat;
   gas_wei : nat;
 };

@@ -6,6 +6,10 @@ const serverSchema = z.object({
     .string()
     .url("IC_HOST must be a valid URL")
     .default("https://ic0.app"),
+  SERVER_RPC_URL: z
+    .string()
+    .url("SERVER_RPC_URL must be a valid URL")
+    .optional(),
 });
 
 const clientSchema = z.object({
@@ -65,6 +69,7 @@ export const getServerEnv = () => {
       process.env.NEXT_PUBLIC_RELAYER_CANISTER_ID ??
       "",
     IC_HOST: process.env.IC_HOST ?? "https://ic0.app",
+    SERVER_RPC_URL: process.env.SERVER_RPC_URL,
   });
 
   if (!parsed.success) {
